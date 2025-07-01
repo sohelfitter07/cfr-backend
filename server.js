@@ -253,6 +253,7 @@ Canadian Fitness Repair`;
           twilio.lookups.v1.phoneNumbers(appointment.phone).fetch({ type: "carrier" })
         );
         const carrier = result.carrier?.name?.toLowerCase();
+        console.log("📞 Carrier detected by Twilio:", carrier); // <== Add this
         const gateway = carrierGateways[carrier];
         if (!gateway) throw new Error("Unsupported or unknown carrier");
 
