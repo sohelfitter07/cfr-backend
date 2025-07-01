@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const nodemailer = require("nodemailer");
+const twilio = require("twilio")(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
 
 const app = express();
 const port = process.env.PORT || 3001;
