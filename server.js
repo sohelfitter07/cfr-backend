@@ -145,27 +145,26 @@ app.post("/api/send-sms", async (req, res) => {
 
 const admin = require("firebase-admin");
 
-// Initialize Firebase Admin (only once)
+// Initialize Firebase Admin
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-// Helper: Retry wrapper
+// Retry helper
 async function retry(fn, attempts = 3, delayMs = 5000) {
   for (let i = 0; i < attempts; i++) {
     try {
       return await fn();
     } catch (err) {
       if (i === attempts - 1) throw err;
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+      await new Promise(res => setTimeout(res, delayMs));
     }
   }
 }
 
-// ✅ Send Confirmation Endpoint
+// ✅ /api/send-confirmation
 app.post("/api/send-confirmation", async (req, res) => {
   const { appointmentId, type } = req.body;
-
   if (!appointmentId || !type) {
     return res.status(400).json({ success: false, error: "Missing appointmentId or type" });
   }
@@ -182,54 +181,89 @@ app.post("/api/send-confirmation", async (req, res) => {
       return res.status(400).json({ success: false, error: "No contact info available" });
     }
 
-    // Format date/time
     const dateObj = appointment.date.toDate?.() || new Date();
     const dateStr = dateObj.toLocaleDateString("en-CA");
     const timeStr = dateObj.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit" });
 
-    // Messages
-    const messages = type === "confirmation"
-      ? {
-          email: `Hi ${appointment.customer},\n\nYour appointment is confirmed for ${dateStr} at ${timeStr}.\n\nTo reschedule, call 289-925-7239.\n\nCanadian Fitness Repair`,
-          sms: `CFR: Appointment on ${dateStr} at ${timeStr}. Call 289-925-7239.`
-        }
-      : {
-          email: `Hi ${appointment.customer},\n\nRepair status update: ${appointment.status}\n\nCall 289-925-7239.\n\nCanadian Fitness Repair`,
-          sms: `CFR: Status - ${appointment.status}. Call 289-925-7239.`
-        };
+    const equipment = appointment.equipment || "";
+    const issue = appointment.issue || "No issue provided";
+    const servicePrice = (appointment.basePrice ?? 0).toFixed(2);
+    const totalPrice = (appointment.price ?? 0).toFixed(2);
+    const status = appointment.status || "Scheduled";
 
-    // ✅ Send email
+    // ✅ Build messages
+    let emailBody = "";
+    let smsBody = "";
+
+    if (type === "confirmation") {
+      emailBody = `Hi ${appointment.customer},
+
+Your appointment is confirmed for:
+📅 ${dateStr} at ⏰ ${timeStr}
+
+Equipment: ${equipment}
+Issue: ${issue}
+
+Service Price: $${servicePrice}
+Total (incl. tax): $${totalPrice}
+Status: ${status}
+
+To reschedule, call 289-925-7239.
+
+Canadian Fitness Repair`;
+
+      smsBody = `Canadian Fitness Repair: ${issue}, $${servicePrice}, Status: ${status}`;
+    } else {
+      emailBody = `Hi ${appointment.customer},
+
+Repair status update:
+Status: ${status}
+
+To ask questions, call 289-925-7239.
+
+Canadian Fitness Repair`;
+
+      smsBody = `Canadian Fitness Repair: Repair status update - ${status}`;
+    }
+
+    // ✅ Send Email
     let emailSent = false;
     if (appointment.email) {
       try {
-        await retry(() => emailTransporter.sendMail({
-          from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
-          to: appointment.email,
-          subject: "Canadian Fitness Repair Update",
-          text: messages.email
-        }));
+        await retry(() =>
+          emailTransporter.sendMail({
+            from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+            to: appointment.email,
+            subject: "Canadian Fitness Repair Update",
+            text: emailBody
+          })
+        );
         emailSent = true;
       } catch (err) {
         console.error("Email failed:", err.message);
       }
     }
 
-    // ✅ Send SMS via carrier lookup
+    // ✅ Send SMS
     let smsSent = false;
     let smsError = null;
     if (appointment.phone) {
       try {
-        const lookup = await retry(() => twilio.lookups.v1.phoneNumbers(appointment.phone).fetch({ type: "carrier" }));
-        const carrier = lookup.carrier?.name?.toLowerCase();
+        const result = await retry(() =>
+          twilio.lookups.v1.phoneNumbers(appointment.phone).fetch({ type: "carrier" })
+        );
+        const carrier = result.carrier?.name?.toLowerCase();
         const gateway = carrierGateways[carrier];
         if (!gateway) throw new Error("Unsupported or unknown carrier");
 
-        await retry(() => emailTransporter.sendMail({
-          from: `"CFR SMS" <${process.env.EMAIL_USER}>`,
-          to: `${appointment.phone}@${gateway}`,
-          subject: '',
-          text: messages.sms
-        }));
+        await retry(() =>
+          emailTransporter.sendMail({
+            from: `"CFR SMS" <${process.env.EMAIL_USER}>`,
+            to: `${appointment.phone}@${gateway}`,
+            subject: '',
+            text: smsBody
+          })
+        );
 
         smsSent = true;
       } catch (err) {
@@ -238,38 +272,37 @@ app.post("/api/send-confirmation", async (req, res) => {
       }
     }
 
-    // Determine delivery status
-    const status = emailSent && smsSent ? "success"
-                 : emailSent ? "partial_success"
-                 : "failed";
+    // ✅ Final status
+    const deliveryStatus = emailSent && smsSent ? "success"
+                         : emailSent ? "partial_success"
+                         : "failed";
 
-    // ✅ Update Firestore
-    await docRef.update({
-      confirmationSent: true,
-      confirmationSentAt: new Date(),
-      lastStatusSent: type,
-      lastAttemptStatus: status,
-      needsResend: false
-    });
-
-    // ✅ Log to Firestore
-    await db.collection("logs").add({
-      type: "confirmation",
-      appointmentId,
-      emailSent,
-      smsSent,
-      status,
-      smsError,
-      timestamp: new Date()
-    });
-
-    res.status(200).json({ success: true, status });
-
-  } catch (error) {
-    console.error("❌ /send-confirmation failed:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+                         await docRef.update({
+                          confirmationSent: true,
+                          confirmationSentAt: new Date(),
+                          lastStatusSent: type,
+                          lastAttemptStatus: deliveryStatus,
+                          needsResend: false
+                        });
+                    
+                        await db.collection("logs").add({
+                          type: "confirmation",
+                          appointmentId,
+                          emailSent,
+                          smsSent,
+                          status: deliveryStatus,
+                          smsError,
+                          timestamp: new Date()
+                        });
+                    
+                        res.status(200).json({ success: true, status: deliveryStatus });
+                    
+                      } catch (error) {
+                        console.error("❌ /send-confirmation failed:", error);
+                        res.status(500).json({ success: false, error: error.message });
+                      }
+                    });
+                    
 
 
 
