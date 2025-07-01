@@ -162,6 +162,7 @@ async function retry(fn, attempts = 3, delayMs = 5000) {
 }
 
 // ✅ /api/send-confirmation
+// ✅ /api/send-confirmation
 app.post("/api/send-confirmation", async (req, res) => {
   const { appointmentId, type } = req.body;
   if (!appointmentId || !type) {
@@ -190,14 +191,26 @@ app.post("/api/send-confirmation", async (req, res) => {
     const totalPrice = (appointment.price ?? 0).toFixed(2);
     const status = appointment.status || "Scheduled";
 
+    // 📧 Email footer
+    const footer = `
+Thanks,  
+Canadian Fitness Repair  
+📧 canadianfitnessrepair@gmail.com  
+📞 289-925-7239  
+🌐 https://canadianfitnessrepair.com`;
+
     // ✅ Build messages
     let emailBody = "";
     let smsBody = "";
+    let emailSubject = "";
 
     if (type === "confirmation") {
+      emailSubject = "Appointment Confirmation - Canadian Fitness Repair";
       emailBody = `Hi ${appointment.customer},
 
-Your appointment is confirmed for:
+This is a confirmation from Canadian Fitness Repair.
+
+Your appointment is scheduled for:
 📅 ${dateStr} at ⏰ ${timeStr}
 
 Equipment: ${equipment}
@@ -207,22 +220,25 @@ Service Price: $${servicePrice}
 Total (incl. tax): $${totalPrice}
 Status: ${status}
 
-To reschedule, call 289-925-7239.
+If you need to reschedule, please contact us at 289-925-7239 or reply to this email.
 
-Canadian Fitness Repair`;
+${footer}`;
 
-      smsBody = `Canadian Fitness Repair: ${issue}, $${servicePrice}, Status: ${status}`;
+smsBody = `Canadian Fitness Repair: Your appt is on ${dateStr} at ${timeStr} for ${equipment}. Call 289-925-7239.`;
     } else {
+      emailSubject = "Repair Status Update - Canadian Fitness Repair";
       emailBody = `Hi ${appointment.customer},
 
-Repair status update:
+Here’s an update regarding your repair:
+
 Status: ${status}
+Equipment: ${equipment}
 
-To ask questions, call 289-925-7239.
+If you have any questions, call us at 289-925-7239 or reply to this email.
 
-Canadian Fitness Repair`;
+${footer}`;
 
-      smsBody = `Canadian Fitness Repair: Repair status update - ${status}`;
+smsBody = `Canadian Fitness Repair: Current status - ${status} for ${equipment}. Call 289-925-7239.`;
     }
 
     // ✅ Send Email
@@ -233,7 +249,7 @@ Canadian Fitness Repair`;
           emailTransporter.sendMail({
             from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
             to: appointment.email,
-            subject: "Canadian Fitness Repair Update",
+            subject: emailSubject,
             text: emailBody
           })
         );
@@ -243,72 +259,66 @@ Canadian Fitness Repair`;
       }
     }
 
-// ✅ Send SMS
-let smsSent = false;
-let smsError = null;
-if (appointment.phone && appointment.carrier && appointment.carrier.toLowerCase() !== 'unknown') {
-  try {
-    const rawPhone = appointment.phone.replace(/\D/g, '');
-    const carrier = appointment.carrier.toLowerCase();
-    const gateway = carrierGateways[carrier];
+    // ✅ Send SMS
+    let smsSent = false;
+    let smsError = null;
+    if (appointment.phone && appointment.carrier && appointment.carrier.toLowerCase() !== 'unknown') {
+      try {
+        const rawPhone = appointment.phone.replace(/\D/g, '');
+        const carrier = appointment.carrier.toLowerCase();
+        const gateway = carrierGateways[carrier];
 
-    if (!gateway) throw new Error("Unsupported or unknown carrier selected");
+        if (!gateway) throw new Error("Unsupported or unknown carrier selected");
 
-    await retry(() =>
-      emailTransporter.sendMail({
-        from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
-        to: `${rawPhone}@${gateway}`,
-        subject: '',
-        text: smsBody
-      })
-    );
+        await retry(() =>
+          emailTransporter.sendMail({
+            from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+            to: `${rawPhone}@${gateway}`,
+            subject: '',
+            text: smsBody
+          })
+        );
 
-    smsSent = true;
-  } catch (err) {
-    smsError = err.message;
-    console.error("❌ SMS failed:", smsError);
-  }
-} else if (appointment.phone) {
-  smsError = "Carrier unknown or not selected — skipping SMS.";
-  console.warn("⚠️ SMS skipped due to missing/unknown carrier.");
-}
-
-
-
+        smsSent = true;
+      } catch (err) {
+        smsError = err.message;
+        console.error("❌ SMS failed:", smsError);
+      }
+    } else if (appointment.phone) {
+      smsError = "Carrier unknown or not selected — skipping SMS.";
+      console.warn("⚠️ SMS skipped due to missing/unknown carrier.");
+    }
 
     // ✅ Final status
     const deliveryStatus = emailSent && smsSent ? "success"
                          : emailSent ? "partial_success"
                          : "failed";
 
-                         await docRef.update({
-                          confirmationSent: true,
-                          confirmationSentAt: new Date(),
-                          lastStatusSent: type,
-                          lastAttemptStatus: deliveryStatus,
-                          needsResend: false
-                        });
-                    
-                        await db.collection("logs").add({
-                          type: "confirmation",
-                          appointmentId,
-                          emailSent,
-                          smsSent,
-                          status: deliveryStatus,
-                          smsError,
-                          timestamp: new Date()
-                        });
-                    
-                        res.status(200).json({ success: true, status: deliveryStatus });
-                    
-                      } catch (error) {
-                        console.error("❌ /send-confirmation failed:", error);
-                        res.status(500).json({ success: false, error: error.message });
-                      }
-                    });
-                    
+    await docRef.update({
+      confirmationSent: true,
+      confirmationSentAt: new Date(),
+      lastStatusSent: type,
+      lastAttemptStatus: deliveryStatus,
+      needsResend: false
+    });
 
+    await db.collection("logs").add({
+      type: "confirmation",
+      appointmentId,
+      emailSent,
+      smsSent,
+      status: deliveryStatus,
+      smsError,
+      timestamp: new Date()
+    });
 
+    res.status(200).json({ success: true, status: deliveryStatus });
+
+  } catch (error) {
+    console.error("❌ /send-confirmation failed:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // ✅ Start server
 app.listen(port, () => {
