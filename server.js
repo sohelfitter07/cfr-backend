@@ -2,7 +2,6 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const nodemailer = require("nodemailer");
-const twilio = require("twilio")(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -247,31 +246,18 @@ Canadian Fitness Repair`;
 // ✅ Send SMS
 let smsSent = false;
 let smsError = null;
-if (appointment.phone) {
+if (appointment.phone && appointment.carrier && appointment.carrier.toLowerCase() !== 'unknown') {
   try {
-    // 🔧 Format: remove "+" for gateway, but KEEP "+" for Twilio Lookup
-    const rawPhone = appointment.phone.replace(/^\+/, '');  // For email
-    const lookupPhone = appointment.phone; // For Twilio (should include '+')
-
-    // 🔍 Use array type for better compatibility
-    const result = await retry(() =>
-      twilio.lookups.v1.phoneNumbers(lookupPhone).fetch({ type: ['carrier'] })
-    );
-
-    // 🐞 Debug full Twilio response
-    console.log("📞 Twilio Lookup Result:", JSON.stringify(result, null, 2));
-
-    const carrier = result.carrier?.name?.toLowerCase();
-    console.log("📞 Carrier detected by Twilio:", carrier);
-
+    const rawPhone = appointment.phone.replace(/\D/g, '');
+    const carrier = appointment.carrier.toLowerCase();
     const gateway = carrierGateways[carrier];
-    if (!gateway) throw new Error("Unsupported or unknown carrier");
 
-    // ✉️ Send SMS
+    if (!gateway) throw new Error("Unsupported or unknown carrier selected");
+
     await retry(() =>
       emailTransporter.sendMail({
-        from: `"CFR SMS" <${process.env.EMAIL_USER}>`,
-        to: `${rawPhone}@${gateway}`,  // No "+"
+        from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+        to: `${rawPhone}@${gateway}`,
         subject: '',
         text: smsBody
       })
@@ -282,7 +268,11 @@ if (appointment.phone) {
     smsError = err.message;
     console.error("❌ SMS failed:", smsError);
   }
+} else if (appointment.phone) {
+  smsError = "Carrier unknown or not selected — skipping SMS.";
+  console.warn("⚠️ SMS skipped due to missing/unknown carrier.");
 }
+
 
 
 
