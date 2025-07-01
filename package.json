@@ -4,7 +4,7 @@
     "cors": "^2.8.5",
     "dotenv": "^17.0.0",
     "express": "^5.1.0",
-    "nodemailer": "^6.9.8"
+    "nodemailer": "^6.10.1"
   },
   "name": "sohelfitter07",
   "version": "1.0.0",
