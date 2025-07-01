@@ -249,13 +249,17 @@ let smsSent = false;
 let smsError = null;
 if (appointment.phone) {
   try {
-    // 🔧 Strip leading "+" for Twilio lookup compatibility
-    const rawPhone = appointment.phone.replace(/^\+/, '');
+    // 🔧 Format: remove "+" for gateway, but KEEP "+" for Twilio Lookup
+    const rawPhone = appointment.phone.replace(/^\+/, '');  // For email
+    const lookupPhone = appointment.phone; // For Twilio (should include '+')
 
-    // 🔍 Lookup carrier with retry
+    // 🔍 Use array type for better compatibility
     const result = await retry(() =>
-      twilio.lookups.v1.phoneNumbers(rawPhone).fetch({ type: "carrier" })
+      twilio.lookups.v1.phoneNumbers(lookupPhone).fetch({ type: ['carrier'] })
     );
+
+    // 🐞 Debug full Twilio response
+    console.log("📞 Twilio Lookup Result:", JSON.stringify(result, null, 2));
 
     const carrier = result.carrier?.name?.toLowerCase();
     console.log("📞 Carrier detected by Twilio:", carrier);
@@ -263,11 +267,11 @@ if (appointment.phone) {
     const gateway = carrierGateways[carrier];
     if (!gateway) throw new Error("Unsupported or unknown carrier");
 
-    // ✉️ Send SMS via email-to-SMS gateway
+    // ✉️ Send SMS
     await retry(() =>
       emailTransporter.sendMail({
         from: `"CFR SMS" <${process.env.EMAIL_USER}>`,
-        to: `${rawPhone}@${gateway}`, // Note: use rawPhone here too
+        to: `${rawPhone}@${gateway}`,  // No "+"
         subject: '',
         text: smsBody
       })
@@ -276,9 +280,10 @@ if (appointment.phone) {
     smsSent = true;
   } catch (err) {
     smsError = err.message;
-    console.error("SMS failed:", smsError);
+    console.error("❌ SMS failed:", smsError);
   }
 }
+
 
 
     // ✅ Final status
