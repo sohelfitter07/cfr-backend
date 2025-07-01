@@ -143,6 +143,136 @@ app.post("/api/send-sms", async (req, res) => {
   }
 });
 
+const admin = require("firebase-admin");
+
+// Initialize Firebase Admin (only once)
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
+// Helper: Retry wrapper
+async function retry(fn, attempts = 3, delayMs = 5000) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i === attempts - 1) throw err;
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
+// ✅ Send Confirmation Endpoint
+app.post("/api/send-confirmation", async (req, res) => {
+  const { appointmentId, type } = req.body;
+
+  if (!appointmentId || !type) {
+    return res.status(400).json({ success: false, error: "Missing appointmentId or type" });
+  }
+
+  const db = admin.firestore();
+
+  try {
+    const docRef = db.collection("appointments").doc(appointmentId);
+    const snap = await docRef.get();
+    if (!snap.exists) return res.status(404).json({ success: false, error: "Appointment not found" });
+
+    const appointment = snap.data();
+    if (!appointment.email && !appointment.phone) {
+      return res.status(400).json({ success: false, error: "No contact info available" });
+    }
+
+    // Format date/time
+    const dateObj = appointment.date.toDate?.() || new Date();
+    const dateStr = dateObj.toLocaleDateString("en-CA");
+    const timeStr = dateObj.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit" });
+
+    // Messages
+    const messages = type === "confirmation"
+      ? {
+          email: `Hi ${appointment.customer},\n\nYour appointment is confirmed for ${dateStr} at ${timeStr}.\n\nTo reschedule, call 289-925-7239.\n\nCanadian Fitness Repair`,
+          sms: `CFR: Appointment on ${dateStr} at ${timeStr}. Call 289-925-7239.`
+        }
+      : {
+          email: `Hi ${appointment.customer},\n\nRepair status update: ${appointment.status}\n\nCall 289-925-7239.\n\nCanadian Fitness Repair`,
+          sms: `CFR: Status - ${appointment.status}. Call 289-925-7239.`
+        };
+
+    // ✅ Send email
+    let emailSent = false;
+    if (appointment.email) {
+      try {
+        await retry(() => emailTransporter.sendMail({
+          from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+          to: appointment.email,
+          subject: "Canadian Fitness Repair Update",
+          text: messages.email
+        }));
+        emailSent = true;
+      } catch (err) {
+        console.error("Email failed:", err.message);
+      }
+    }
+
+    // ✅ Send SMS via carrier lookup
+    let smsSent = false;
+    let smsError = null;
+    if (appointment.phone) {
+      try {
+        const lookup = await retry(() => twilio.lookups.v1.phoneNumbers(appointment.phone).fetch({ type: "carrier" }));
+        const carrier = lookup.carrier?.name?.toLowerCase();
+        const gateway = carrierGateways[carrier];
+        if (!gateway) throw new Error("Unsupported or unknown carrier");
+
+        await retry(() => emailTransporter.sendMail({
+          from: `"CFR SMS" <${process.env.EMAIL_USER}>`,
+          to: `${appointment.phone}@${gateway}`,
+          subject: '',
+          text: messages.sms
+        }));
+
+        smsSent = true;
+      } catch (err) {
+        smsError = err.message;
+        console.error("SMS failed:", smsError);
+      }
+    }
+
+    // Determine delivery status
+    const status = emailSent && smsSent ? "success"
+                 : emailSent ? "partial_success"
+                 : "failed";
+
+    // ✅ Update Firestore
+    await docRef.update({
+      confirmationSent: true,
+      confirmationSentAt: new Date(),
+      lastStatusSent: type,
+      lastAttemptStatus: status,
+      needsResend: false
+    });
+
+    // ✅ Log to Firestore
+    await db.collection("logs").add({
+      type: "confirmation",
+      appointmentId,
+      emailSent,
+      smsSent,
+      status,
+      smsError,
+      timestamp: new Date()
+    });
+
+    res.status(200).json({ success: true, status });
+
+  } catch (error) {
+    console.error("❌ /send-confirmation failed:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+
 // ✅ Start server
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
