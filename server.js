@@ -144,11 +144,11 @@ app.post("/api/send-sms", async (req, res) => {
 });
 
 const admin = require("firebase-admin");
+const serviceAccount = require("./firebase-service-account.json");
 
-// Initialize Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp();
-}
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
 
 // Retry helper
 async function retry(fn, attempts = 3, delayMs = 5000) {
