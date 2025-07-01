@@ -193,7 +193,7 @@ app.post("/api/send-confirmation", async (req, res) => {
 
     // 📧 Email footer
     const footer = `
-Thanks,  
+Thank you,  
 Canadian Fitness Repair  
 📧 canadianfitnessrepair@gmail.com  
 📞 289-925-7239  
