@@ -244,34 +244,42 @@ Canadian Fitness Repair`;
       }
     }
 
-    // ✅ Send SMS
-    let smsSent = false;
-    let smsError = null;
-    if (appointment.phone) {
-      try {
-        const result = await retry(() =>
-          twilio.lookups.v1.phoneNumbers(appointment.phone).fetch({ type: "carrier" })
-        );
-        const carrier = result.carrier?.name?.toLowerCase();
-        console.log("📞 Carrier detected by Twilio:", carrier); // <== Add this
-        const gateway = carrierGateways[carrier];
-        if (!gateway) throw new Error("Unsupported or unknown carrier");
+// ✅ Send SMS
+let smsSent = false;
+let smsError = null;
+if (appointment.phone) {
+  try {
+    // 🔧 Strip leading "+" for Twilio lookup compatibility
+    const rawPhone = appointment.phone.replace(/^\+/, '');
 
-        await retry(() =>
-          emailTransporter.sendMail({
-            from: `"CFR SMS" <${process.env.EMAIL_USER}>`,
-            to: `${appointment.phone}@${gateway}`,
-            subject: '',
-            text: smsBody
-          })
-        );
+    // 🔍 Lookup carrier with retry
+    const result = await retry(() =>
+      twilio.lookups.v1.phoneNumbers(rawPhone).fetch({ type: "carrier" })
+    );
 
-        smsSent = true;
-      } catch (err) {
-        smsError = err.message;
-        console.error("SMS failed:", smsError);
-      }
-    }
+    const carrier = result.carrier?.name?.toLowerCase();
+    console.log("📞 Carrier detected by Twilio:", carrier);
+
+    const gateway = carrierGateways[carrier];
+    if (!gateway) throw new Error("Unsupported or unknown carrier");
+
+    // ✉️ Send SMS via email-to-SMS gateway
+    await retry(() =>
+      emailTransporter.sendMail({
+        from: `"CFR SMS" <${process.env.EMAIL_USER}>`,
+        to: `${rawPhone}@${gateway}`, // Note: use rawPhone here too
+        subject: '',
+        text: smsBody
+      })
+    );
+
+    smsSent = true;
+  } catch (err) {
+    smsError = err.message;
+    console.error("SMS failed:", smsError);
+  }
+}
+
 
     // ✅ Final status
     const deliveryStatus = emailSent && smsSent ? "success"
