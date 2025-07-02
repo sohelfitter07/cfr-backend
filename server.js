@@ -322,6 +322,7 @@ app.post("/api/send-reminders", async (req, res) => {
   try {
     const snapshot = await db.collection("appointments")
       .where("reminderEnabled", "==", true)
+      .where("reminderSent", "!=", true) // ✅ Only those that haven't been sent
       .where("date", ">=", now)
       .where("date", "<=", tomorrow)
       .get();
@@ -344,6 +345,7 @@ Canadian Fitness Repair
     for (const doc of snapshot.docs) {
       const appointment = doc.data();
       const appointmentId = doc.id;
+      const docRef = db.collection("appointments").doc(appointmentId);
 
       const dateObj = appointment.date.toDate?.() || new Date();
       const dateStr = dateObj.toLocaleDateString("en-CA");
@@ -351,9 +353,10 @@ Canadian Fitness Repair
 
       const equipment = appointment.equipment || "";
       const status = appointment.status || "Scheduled";
+      const customer = appointment.customer || "Customer";
 
       const emailSubject = "⏰ Appointment Reminder - Canadian Fitness Repair";
-      const emailBody = `Hi ${appointment.customer},
+      const emailBody = `Hi ${customer},
 
 This is a reminder from Canadian Fitness Repair.
 
@@ -416,6 +419,12 @@ ${EMAIL_FOOTER}`;
         }
       }
 
+      // ✅ Mark reminder as sent to prevent future duplicates
+      await docRef.update({
+        reminderSent: true,
+        reminderSentAt: new Date()
+      });
+
       // ✅ Log the reminder
       await db.collection("logs").add({
         type: "reminder",
@@ -436,6 +445,7 @@ ${EMAIL_FOOTER}`;
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
 
 
 // ✅ Start server
