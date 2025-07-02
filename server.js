@@ -53,6 +53,13 @@ const carrierGateways = {
   sasktel: "sms.sasktel.com",
   videotron: "texto.videotron.ca"
 };
+// ✅ Standard footer for all emails
+const EMAIL_FOOTER = `
+Thank you,  
+Canadian Fitness Repair  
+📧 canadianfitnessrepair@gmail.com  
+📞 289-925-7239  
+🌐 https://canadianfitnessrepair.com`;
 
 // ✅ Firebase config endpoint
 app.get("/api/firebase-config", (req, res) => {
@@ -221,7 +228,7 @@ Status: ${status}
 
 If you need to reschedule, please contact us at 289-925-7239 or reply to this email.
 
-${footer}`;
+${EMAIL_FOOTER}`;
 
 smsBody = `Canadian Fitness Repair: Your appt is on ${dateStr} at ${timeStr} for ${equipment}. Call 289-925-7239.`;
     } else {
@@ -366,7 +373,7 @@ Status: ${status}
 
 Please contact us if you need to reschedule.
 
-${footer}`;
+${EMAIL_FOOTER}`;
 
       const smsBody = `Reminder: Appt on ${dateStr} at ${timeStr} for ${equipment}. Call 289-925-7239 if needed.`;
 
