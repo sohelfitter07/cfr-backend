@@ -313,97 +313,130 @@ ${EMAIL_FOOTER}`;
 });
 
 
-// ✅ Reminder endpoint
+// ✅ Reminder email & SMS to customer
 app.post("/api/send-reminders", async (req, res) => {
   const db = admin.firestore();
   const now = new Date();
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-  const snapshot = await db.collection("appointments")
-    .where("reminderEnabled", "==", true)
-    .where("date", ">=", now)
-    .where("date", "<=", tomorrow)
-    .get();
+  try {
+    const snapshot = await db.collection("appointments")
+      .where("reminderEnabled", "==", true)
+      .where("date", ">=", now)
+      .where("date", "<=", tomorrow)
+      .get();
 
-  if (snapshot.empty) return res.json({ success: true, message: "No reminders due" });
+    if (snapshot.empty) {
+      return res.status(200).json({ success: true, message: "No reminders to send." });
+    }
 
-  const results = [];
+    const EMAIL_FOOTER = `
+--
+Thank you,  
+Canadian Fitness Repair  
+📧 canadianfitnessrepair@gmail.com  
+📞 289-925-7239  
+🌐 https://canadianfitnessrepair.com
+`;
 
-  for (const doc of snapshot.docs) {
-    const appointment = doc.data();
-    const id = doc.id;
+    const results = [];
 
-    const dateObj = appointment.date.toDate?.() || new Date();
-    const dateStr = dateObj.toLocaleDateString("en-CA");
-    const timeStr = dateObj.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit" });
+    for (const doc of snapshot.docs) {
+      const appointment = doc.data();
+      const appointmentId = doc.id;
 
-    const emailBody = `Hi ${appointment.customer},
+      const dateObj = appointment.date.toDate?.() || new Date();
+      const dateStr = dateObj.toLocaleDateString("en-CA");
+      const timeStr = dateObj.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit" });
 
-Just a friendly reminder of your upcoming appointment:
+      const equipment = appointment.equipment || "";
+      const status = appointment.status || "Scheduled";
 
+      const emailSubject = "⏰ Appointment Reminder - Canadian Fitness Repair";
+      const emailBody = `Hi ${appointment.customer},
+
+This is a reminder from Canadian Fitness Repair.
+
+You have an upcoming appointment:
 📅 ${dateStr} at ⏰ ${timeStr}
-Equipment: ${appointment.equipment || ""}
-Status: ${appointment.status || "Scheduled"}
+Equipment: ${equipment}
+Status: ${status}
 
-Please call or reply if you need to reschedule.
+Please contact us if you need to reschedule.
 
 ${EMAIL_FOOTER}`;
 
-    const smsBody = `Reminder: Appt on ${dateStr} at ${timeStr} for ${appointment.equipment || "equipment"}. Call 289-925-7239 if needed.`;
+      const smsBody = `Reminder: Appt on ${dateStr} at ${timeStr} for ${equipment}. Call 289-925-7239.`;
 
-    let emailSent = false, smsSent = false, smsError = null;
+      let emailSent = false;
+      let smsSent = false;
+      let smsError = null;
 
-    if (appointment.email) {
-      try {
-        await retry(() =>
-          emailTransporter.sendMail({
-            from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
-            to: appointment.email,
-            subject: "⏰ Appointment Reminder - Canadian Fitness Repair",
-            text: emailBody
-          })
-        );
-        emailSent = true;
-      } catch (e) {
-        console.error("Reminder Email failed:", e.message);
+      // ✅ Send email
+      if (appointment.email) {
+        try {
+          await retry(() =>
+            emailTransporter.sendMail({
+              from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+              to: appointment.email,
+              subject: emailSubject,
+              text: emailBody
+            })
+          );
+          emailSent = true;
+        } catch (err) {
+          console.error("❌ Reminder Email failed:", err.message);
+        }
       }
+
+      // ✅ Send SMS
+      if (
+        appointment.phone &&
+        appointment.carrier &&
+        appointment.carrier.toLowerCase() !== "unknown"
+      ) {
+        try {
+          const rawPhone = appointment.phone.replace(/\D/g, "");
+          const carrier = appointment.carrier.toLowerCase();
+          const gateway = carrierGateways[carrier];
+          if (!gateway) throw new Error("Unsupported or unknown carrier");
+
+          await retry(() =>
+            emailTransporter.sendMail({
+              from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+              to: `${rawPhone}@${gateway}`,
+              subject: "",
+              text: smsBody
+            })
+          );
+          smsSent = true;
+        } catch (err) {
+          smsError = err.message;
+          console.error("❌ Reminder SMS failed:", smsError);
+        }
+      }
+
+      // ✅ Log the reminder
+      await db.collection("logs").add({
+        type: "reminder",
+        appointmentId,
+        emailSent,
+        smsSent,
+        smsError,
+        timestamp: new Date()
+      });
+
+      results.push({ appointmentId, emailSent, smsSent });
     }
 
-    if (appointment.phone && appointment.carrier && appointment.carrier.toLowerCase() !== "unknown") {
-      try {
-        const rawPhone = appointment.phone.replace(/\D/g, '');
-        const gateway = carrierGateways[appointment.carrier.toLowerCase()];
-        if (!gateway) throw new Error("Unsupported carrier");
+    res.status(200).json({ success: true, results });
 
-        await retry(() =>
-          emailTransporter.sendMail({
-            from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
-            to: `${rawPhone}@${gateway}`,
-            subject: '',
-            text: smsBody
-          })
-        );
-        smsSent = true;
-      } catch (e) {
-        smsError = e.message;
-        console.error("Reminder SMS failed:", smsError);
-      }
-    }
-
-    await db.collection("logs").add({
-      type: "reminder",
-      appointmentId: id,
-      emailSent,
-      smsSent,
-      smsError,
-      timestamp: new Date()
-    });
-
-    results.push({ appointmentId: id, emailSent, smsSent });
+  } catch (error) {
+    console.error("❌ /send-reminders failed:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
-
-  res.json({ success: true, results });
 });
+
 
 // ✅ Start server
 app.listen(port, () => {
