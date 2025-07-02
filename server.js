@@ -58,7 +58,14 @@ const carrierGateways = {
   sasktel: "sms.sasktel.com",
   videotron: "texto.videotron.ca"
 };
-
+// ✅ ADD THIS RIGHT AFTER CARRIERGATEWAYS
+function isValidCanadianCarrier(carrier) {
+  const validCarriers = [
+    'rogers', 'bell', 'telus', 'fido', 'virgin', 
+    'koodo', 'freedom', 'chatr', 'public', 'sasktel', 'videotron'
+  ];
+  return carrier && validCarriers.includes(carrier.toLowerCase());
+}
 // ✅ Reusable footer
 const EMAIL_FOOTER = `
 Thank you,  
@@ -168,6 +175,17 @@ app.post("/api/send-confirmation", async (req, res) => {
   }
 
   const appointment = snap.data();
+  
+  // ======== DEBUG LOG ========
+  console.log(`[CONFIRMATION DEBUG] Appointment ${appointmentId}:`, {
+    customer: appointment.customer,
+    phone: appointment.phone,
+    carrier: appointment.carrier || 'MISSING',
+    email: appointment.email || 'MISSING',
+    hasEmail: !!appointment.email,
+    hasSMS: !!(appointment.phone && appointment.carrier)
+  });
+
   if (!appointment.email && !appointment.phone) {
     return res.status(400).json({ success: false, error: "No contact info available" });
   }
@@ -193,14 +211,12 @@ app.post("/api/send-confirmation", async (req, res) => {
       ? "Appointment Confirmation - Canadian Fitness Repair"
       : "Repair Status Update - Canadian Fitness Repair";
 
-  const EMAIL_FOOTER = `
---
-Thank you,  
-Canadian Fitness Repair  
-📧 canadianfitnessrepair@gmail.com  
-📞 289-925-7239  
-🌐 https://canadianfitnessrepair.com
-`;
+  // ======== OPTIMIZED FOOTER ========
+  const ESSENTIAL_FOOTER = `
+Contact us:
+📧 canadianfitnessrepair@gmail.com
+📞 289-925-7239
+🌐 https://canadianfitnessrepair.com`;
 
   const emailBody =
     type === "confirmation"
@@ -220,26 +236,27 @@ Status: ${status}
 
 If you need to reschedule, please contact us at 289-925-7239 or reply to this email.
 
-${EMAIL_FOOTER}`
+${ESSENTIAL_FOOTER}`
       : `Hi ${customer},
 
-Here’s an update regarding your repair:
+Here's an update regarding your repair:
 
 Status: ${status}
 Equipment: ${equipment}
 
-If you have any questions, call us at 289-925-7239 or reply to this email.
+If you have any questions, call us at 289-925-7239.
 
-${EMAIL_FOOTER}`;
+${ESSENTIAL_FOOTER}`;
 
   const smsBody =
     type === "confirmation"
-      ? `Canadian Fitness Repair: Appt on ${dateStr} at ${timeStr}, ${equipment}, Status: ${status}. Call 289-925-7239.`
-      : `Canadian Fitness Repair: Current status - ${status} for ${equipment}. Call 289-925-7239.`;
+      ? `Canadian Fitness Repair: Appt on ${dateStr} at ${timeStr}, ${equipment}, Status: ${status}. Call 289-925-7239 or visit https://canadianfitnessrepair.com`
+      : `Canadian Fitness Repair: Status - ${status} for ${equipment}. Call 289-925-7239 or visit https://canadianfitnessrepair.com`;
 
   let emailSent = false;
   let smsSent = false;
   let smsError = null;
+  let warnings = []; // To collect warnings for frontend
 
   // ✅ Send Email
   if (appointment.email) {
@@ -258,34 +275,41 @@ ${EMAIL_FOOTER}`;
     }
   }
 
-  // ✅ Send SMS
-  if (
-    appointment.phone &&
-    appointment.carrier &&
-    appointment.carrier.toLowerCase() !== "unknown"
-  ) {
-    try {
-      const rawPhone = appointment.phone.replace(/\D/g, "");
-      const carrier = appointment.carrier.toLowerCase();
-      const gateway = carrierGateways[carrier];
-      if (!gateway) throw new Error("Unsupported or unknown carrier");
-
-      await retry(() =>
-        emailTransporter.sendMail({
-          from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
-          to: `${rawPhone}@${gateway}`,
-          subject: "",
-          text: smsBody
-        })
-      );
-      smsSent = true;
-    } catch (err) {
-      smsError = err.message;
-      console.error("❌ SMS failed:", smsError);
+  // ======== SMS HANDLING ========
+  if (appointment.phone) {
+    const carrierKey = appointment.carrier ? appointment.carrier.toLowerCase() : '';
+    
+    // Check if carrier is valid and supported
+    if (carrierKey && carrierKey !== "unknown" && carrierGateways[carrierKey]) {
+      try {
+        const rawPhone = appointment.phone.replace(/\D/g, "");
+        await retry(() =>
+          emailTransporter.sendMail({
+            from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+            to: `${rawPhone}@${carrierGateways[carrierKey]}`,
+            subject: "",
+            text: smsBody
+          })
+        );
+        smsSent = true;
+      } catch (err) {
+        smsError = `SMS failed: ${err.message}`;
+        console.error("❌ SMS failed:", err);
+        warnings.push(smsError);
+      }
+    } else {
+      // More descriptive error messages
+      if (!carrierKey) {
+        smsError = "SMS skipped: Carrier information missing";
+      } else if (carrierKey === "unknown") {
+        smsError = "SMS skipped: Carrier marked as 'unknown'";
+      } else {
+        smsError = `SMS skipped: Unsupported carrier '${appointment.carrier}'`;
+      }
+      
+      console.warn("⚠️ " + smsError);
+      warnings.push(smsError);
     }
-  } else if (appointment.phone) {
-    smsError = "Carrier unknown or not selected — skipping SMS.";
-    console.warn("⚠️ SMS skipped due to missing/unknown carrier.");
   }
 
   const deliveryStatus =
@@ -309,9 +333,13 @@ ${EMAIL_FOOTER}`;
     timestamp: new Date()
   });
 
-  res.json({ success: true, status: deliveryStatus });
+  // ======== RESPONSE WITH WARNINGS ========
+  res.json({ 
+    success: true, 
+    status: deliveryStatus,
+    warnings
+  });
 });
-
 
 // ✅ Reminder email & SMS to customer
 app.post("/api/send-reminders", async (req, res) => {
