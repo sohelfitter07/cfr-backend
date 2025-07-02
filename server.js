@@ -162,7 +162,6 @@ async function retry(fn, attempts = 3, delayMs = 5000) {
 }
 
 // ✅ /api/send-confirmation
-// ✅ /api/send-confirmation
 app.post("/api/send-confirmation", async (req, res) => {
   const { appointmentId, type } = req.body;
   if (!appointmentId || !type) {
@@ -319,6 +318,122 @@ smsBody = `Canadian Fitness Repair: Current status - ${status} for ${equipment}.
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+app.post("/api/send-reminders", async (req, res) => {
+  const db = admin.firestore();
+  const now = new Date();
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+  try {
+    const snapshot = await db.collection("appointments")
+      .where("reminderEnabled", "==", true)
+      .where("date", ">=", now)
+      .where("date", "<=", tomorrow)
+      .get();
+
+    if (snapshot.empty) {
+      return res.status(200).json({ success: true, message: "No reminders to send." });
+    }
+
+    const results = [];
+
+    for (const doc of snapshot.docs) {
+      const appointment = doc.data();
+      const appointmentId = doc.id;
+
+      const dateObj = appointment.date.toDate?.() || new Date();
+      const dateStr = dateObj.toLocaleDateString("en-CA");
+      const timeStr = dateObj.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit" });
+
+      const equipment = appointment.equipment || "";
+      const status = appointment.status || "Scheduled";
+
+      const footer = `
+Thank you,  
+Canadian Fitness Repair  
+📧 canadianfitnessrepair@gmail.com  
+📞 289-925-7239  
+🌐 https://canadianfitnessrepair.com`;
+
+      const emailSubject = "⏰ Appointment Reminder - Canadian Fitness Repair";
+      const emailBody = `Hi ${appointment.customer},
+
+Just a friendly reminder that you have an upcoming appointment:
+
+📅 ${dateStr} at ⏰ ${timeStr}
+Equipment: ${equipment}
+Status: ${status}
+
+Please contact us if you need to reschedule.
+
+${footer}`;
+
+      const smsBody = `Reminder: Appt on ${dateStr} at ${timeStr} for ${equipment}. Call 289-925-7239 if needed.`;
+
+      let emailSent = false;
+      let smsSent = false;
+      let smsError = null;
+
+      // Send email
+      if (appointment.email) {
+        try {
+          await retry(() =>
+            emailTransporter.sendMail({
+              from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+              to: appointment.email,
+              subject: emailSubject,
+              text: emailBody
+            })
+          );
+          emailSent = true;
+        } catch (err) {
+          console.error(`❌ Reminder Email failed: ${err.message}`);
+        }
+      }
+
+      // Send SMS
+      if (appointment.phone && appointment.carrier && appointment.carrier.toLowerCase() !== "unknown") {
+        try {
+          const rawPhone = appointment.phone.replace(/\D/g, '');
+          const gateway = carrierGateways[appointment.carrier.toLowerCase()];
+          if (!gateway) throw new Error("Unsupported or unknown carrier");
+
+          await retry(() =>
+            emailTransporter.sendMail({
+              from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+              to: `${rawPhone}@${gateway}`,
+              subject: '',
+              text: smsBody
+            })
+          );
+          smsSent = true;
+        } catch (err) {
+          smsError = err.message;
+          console.error("❌ Reminder SMS failed:", smsError);
+        }
+      }
+
+      // Log attempt
+      await db.collection("logs").add({
+        type: "reminder",
+        appointmentId,
+        emailSent,
+        smsSent,
+        smsError,
+        timestamp: new Date()
+      });
+
+      results.push({ appointmentId, emailSent, smsSent });
+    }
+
+    res.status(200).json({ success: true, results });
+
+  } catch (error) {
+    console.error("❌ /send-reminders failed:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 
 // ✅ Start server
 app.listen(port, () => {
