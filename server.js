@@ -256,7 +256,7 @@ Canadian Fitness Repair
 📞 289-925-7239
 🌐 https://canadianfitnessrepair.com`;
 
-const smsBody = `Canadian Fitness Repair: Appt on ${dateStr} at ${timeStr} for ${equipment}, Status: ${status}. Call 289-925-7239 or visit canadianfitnessrepair.com`;
+  const smsBody = `Canadian Fitness Repair: Appt on ${dateStr} at ${timeStr} for ${equipment}, Status: ${status}. Call 289-925-7239 or visit canadianfitnessrepair.com`;
 
   let emailSent = false;
   let smsSent = false;
@@ -280,75 +280,74 @@ const smsBody = `Canadian Fitness Repair: Appt on ${dateStr} at ${timeStr} for $
     }
   }
 
- // ======== SMS HANDLING ========
-if (appointment.phone) {
-  const carrierKey = appointment.carrier ? appointment.carrier.toLowerCase() : '';
-  console.log("📲 Carrier key:", carrierKey);
+  // ======== SMS HANDLING ========
+  if (appointment.phone) {
+    const carrierKey = appointment.carrier ? appointment.carrier.toLowerCase() : '';
+    console.log("📲 Carrier key:", carrierKey);
 
-  if (carrierKey && carrierKey !== "unknown" && carrierGateways[carrierKey]) {
-    try {
-      const rawPhone = appointment.phone.replace(/\D/g, "");
-      console.log("📞 Raw phone number:", rawPhone);
+    if (carrierKey && carrierKey !== "unknown" && carrierGateways[carrierKey]) {
+      try {
+        const rawPhone = appointment.phone.replace(/\D/g, "");
+        console.log("📞 Raw phone number:", rawPhone);
 
-      const smsGatewayDomain = carrierGateways[carrierKey];
-      console.log("🏁 SMS Gateway domain:", smsGatewayDomain);
+        const smsGatewayDomain = carrierGateways[carrierKey];
+        console.log("🏁 SMS Gateway domain:", smsGatewayDomain);
 
-      const smsTo = `${rawPhone}@${smsGatewayDomain}`;
-      console.log("📨 Sending SMS to:", smsTo);
-      console.log("📨 SMS body:", smsBody);
+        const smsTo = `${rawPhone}@${smsGatewayDomain}`;
+        console.log("📨 Sending SMS to:", smsTo);
+        console.log("📨 SMS body:", smsBody);
 
-      // ✅ Check SMS length and log warning if needed
-      if (smsBody.length > 160) {
-        const warningMsg = `⚠️ SMS exceeds 160 chars (${smsBody.length}). May be dropped or split.`;
-        console.warn(warningMsg);
-        warnings.push(warningMsg);
+        // ✅ Check SMS length and log warning if needed
+        if (smsBody.length > 160) {
+          const warningMsg = `⚠️ SMS exceeds 160 chars (${smsBody.length}). May be dropped or split.`;
+          console.warn(warningMsg);
+          warnings.push(warningMsg);
 
-        await db.collection("logs").add({
-          type: "warning",
-          appointmentId,
-          message: warningMsg,
-          timestamp: new Date()
-        });
+          await db.collection("logs").add({
+            type: "warning",
+            appointmentId,
+            message: warningMsg,
+            timestamp: new Date()
+          });
+        }
+
+        await retry(() =>
+          emailTransporter.sendMail({
+            from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+            to: smsTo,
+            subject: "",
+            text: smsBody
+          })
+        );
+
+        console.log("✅ SMS send succeeded");
+        smsSent = true;
+
+      } catch (err) {
+        smsError = `SMS failed: ${err.message}`;
+        console.error("❌ SMS failed:", err);
+        warnings.push(smsError);
       }
-
-      await retry(() =>
-        emailTransporter.sendMail({
-          from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
-          to: smsTo,
-          subject: "",
-          text: smsBody
-        })
-      );
-
-      console.log("✅ SMS send succeeded");
-      smsSent = true;
-
-    } catch (err) {
-      smsError = `SMS failed: ${err.message}`;
-      console.error("❌ SMS failed:", err);
+    } else {
+      // If no valid carrier or the carrier is unknown, log it as a warning
+      if (!carrierKey) {
+        smsError = "SMS skipped: Carrier information missing";
+      } else if (carrierKey === "unknown") {
+        smsError = "SMS skipped: Carrier marked as 'unknown'";
+      } else {
+        smsError = `SMS skipped: Unsupported carrier '${appointment.carrier}'`;
+      }
+      console.warn("⚠️ " + smsError);
       warnings.push(smsError);
     }
-  } else {
-    if (!carrierKey) {
-      smsError = "SMS skipped: Carrier information missing";
-    } else if (carrierKey === "unknown") {
-      smsError = "SMS skipped: Carrier marked as 'unknown'";
-    } else {
-      smsError = `SMS skipped: Unsupported carrier '${appointment.carrier}'`;
-    }
-    console.warn("⚠️ " + smsError);
-    warnings.push(smsError);
   }
-}
-
 
   const deliveryStatus =
-  emailSent && smsSent ? "success" :
-  emailSent ? "partial_success" :
-  smsSent && !appointment.email ? "success" : // ✅ If SMS sent and no email was expected
-  smsSent ? "partial_success" :
-  "failed";
-
+    emailSent && smsSent ? "success" :
+    emailSent ? "partial_success" :
+    smsSent && !appointment.email ? "success" : // ✅ If SMS sent and no email was expected
+    smsSent ? "partial_success" :
+    "failed";
 
   await docRef.update({
     confirmationSent: true,
@@ -369,12 +368,13 @@ if (appointment.phone) {
   });
 
   // ======== RESPONSE WITH WARNINGS ========
-  res.json({ 
-    success: true, 
+  res.json({
+    success: true,
     status: deliveryStatus,
     warnings
   });
 });
+
 
 // ✅ Reminder email & SMS to customer
 app.post("/api/send-reminders", async (req, res) => {
