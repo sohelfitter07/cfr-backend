@@ -299,6 +299,9 @@ const smsBody = `CFR Appt: ${dateStr} ${timeStr} ${equipment}, ${status}`;
         );
         console.log("✅ SMS send succeeded");
         smsSent = true;
+        if (!smsSent) {
+          console.warn(`⚠️ SMS failed or skipped for ${appointmentId}.`);
+        }        
       } catch (err) {
         smsError = `SMS failed: ${err.message}`;
         console.error("❌ SMS failed:", err);
@@ -408,7 +411,8 @@ Please contact us if you need to reschedule.
 
 ${EMAIL_FOOTER}`;
 
-      const smsBody = `Reminder: Appt on ${dateStr} at ${timeStr} for ${equipment}. Call 289-925-7239.`;
+const smsBody = `Canadian Fitness Repair: Appt on ${dateStr} at ${timeStr}, ${equipment}, Status: ${status}. Call 289-925-7239 or visit canadianfitnessrepair.com`;
+
 
       let emailSent = false;
       let smsSent = false;
