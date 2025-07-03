@@ -272,54 +272,67 @@ const smsBody = `CFR Appt: ${dateStr} ${timeStr} ${equipment}, ${status}`;
     }
   }
 
-  // ======== SMS HANDLING ========
-  if (appointment.phone) {
-    const carrierKey = appointment.carrier ? appointment.carrier.toLowerCase() : '';
-    console.log("📲 Carrier key:", carrierKey);
-    
-    if (carrierKey && carrierKey !== "unknown" && carrierGateways[carrierKey]) {
-      try {
-        const rawPhone = appointment.phone.replace(/\D/g, "");
-        console.log("📞 Raw phone number:", rawPhone);
-        
-        const smsGatewayDomain = carrierGateways[carrierKey];
-        console.log("🏁 SMS Gateway domain:", smsGatewayDomain);
-        
-        const smsTo = `${rawPhone}@${smsGatewayDomain}`;
-        console.log("📨 Sending SMS to:", smsTo);
-        console.log("📨 SMS body:", smsBody);
-        
-        await retry(() =>
-          emailTransporter.sendMail({
-            from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
-            to: smsTo,
-            subject: "",
-            text: smsBody
-          })
-        );
-        console.log("✅ SMS send succeeded");
-        smsSent = true;
-        if (!smsSent) {
-          console.warn(`⚠️ SMS failed or skipped for ${appointmentId}.`);
-        }        
-      } catch (err) {
-        smsError = `SMS failed: ${err.message}`;
-        console.error("❌ SMS failed:", err);
-        warnings.push(smsError);
+ // ======== SMS HANDLING ========
+if (appointment.phone) {
+  const carrierKey = appointment.carrier ? appointment.carrier.toLowerCase() : '';
+  console.log("📲 Carrier key:", carrierKey);
+
+  if (carrierKey && carrierKey !== "unknown" && carrierGateways[carrierKey]) {
+    try {
+      const rawPhone = appointment.phone.replace(/\D/g, "");
+      console.log("📞 Raw phone number:", rawPhone);
+
+      const smsGatewayDomain = carrierGateways[carrierKey];
+      console.log("🏁 SMS Gateway domain:", smsGatewayDomain);
+
+      const smsTo = `${rawPhone}@${smsGatewayDomain}`;
+      console.log("📨 Sending SMS to:", smsTo);
+      console.log("📨 SMS body:", smsBody);
+
+      // ✅ Check SMS length and log warning if needed
+      if (smsBody.length > 160) {
+        const warningMsg = `⚠️ SMS exceeds 160 chars (${smsBody.length}). May be dropped or split.`;
+        console.warn(warningMsg);
+        warnings.push(warningMsg);
+
+        await db.collection("logs").add({
+          type: "warning",
+          appointmentId,
+          message: warningMsg,
+          timestamp: new Date()
+        });
       }
-    } else {
-      if (!carrierKey) {
-        smsError = "SMS skipped: Carrier information missing";
-      } else if (carrierKey === "unknown") {
-        smsError = "SMS skipped: Carrier marked as 'unknown'";
-      } else {
-        smsError = `SMS skipped: Unsupported carrier '${appointment.carrier}'`;
-      }
-      console.warn("⚠️ " + smsError);
+
+      await retry(() =>
+        emailTransporter.sendMail({
+          from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+          to: smsTo,
+          subject: "",
+          text: smsBody
+        })
+      );
+
+      console.log("✅ SMS send succeeded");
+      smsSent = true;
+
+    } catch (err) {
+      smsError = `SMS failed: ${err.message}`;
+      console.error("❌ SMS failed:", err);
       warnings.push(smsError);
     }
+  } else {
+    if (!carrierKey) {
+      smsError = "SMS skipped: Carrier information missing";
+    } else if (carrierKey === "unknown") {
+      smsError = "SMS skipped: Carrier marked as 'unknown'";
+    } else {
+      smsError = `SMS skipped: Unsupported carrier '${appointment.carrier}'`;
+    }
+    console.warn("⚠️ " + smsError);
+    warnings.push(smsError);
   }
-  
+}
+
 
   const deliveryStatus =
   emailSent && smsSent ? "success" :
