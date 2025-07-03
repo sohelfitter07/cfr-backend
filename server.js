@@ -322,7 +322,12 @@ ${ESSENTIAL_FOOTER}`;
   
 
   const deliveryStatus =
-    emailSent && smsSent ? "success" : emailSent ? "partial_success" : "failed";
+  emailSent && smsSent ? "success" :
+  emailSent ? "partial_success" :
+  smsSent && !appointment.email ? "success" : // ✅ If SMS sent and no email was expected
+  smsSent ? "partial_success" :
+  "failed";
+
 
   await docRef.update({
     confirmationSent: true,
