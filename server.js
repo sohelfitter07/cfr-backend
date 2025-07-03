@@ -422,7 +422,11 @@ Status: ${status}
 
 Please contact us if you need to reschedule.
 
-${EMAIL_FOOTER}`;
+Thank you,  
+Canadian Fitness Repair  
+📧 canadianfitnessrepair@gmail.com  
+📞 289-925-7239  
+🌐 https://canadianfitnessrepair.com`;
 
 const smsBody = `Canadian Fitness Repair: Appt on ${dateStr} at ${timeStr}, ${equipment}, Status: ${status}. Call 289-925-7239 or visit canadianfitnessrepair.com`;
 
