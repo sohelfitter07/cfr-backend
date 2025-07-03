@@ -248,7 +248,7 @@ If you have any questions, call us at 289-925-7239.
 
 ${ESSENTIAL_FOOTER}`;
 
-const smsBody = `CFR Appt: ${dateStr} ${timeStr} ${equipment}, ${status}`;
+const smsBody = `Canadian Fitness Repair: Appt on ${dateStr} at ${timeStr} for ${equipment}, Status: ${status}. Call 289-925-7239 or visit canadianfitnessrepair.com`;
 
   let emailSent = false;
   let smsSent = false;
