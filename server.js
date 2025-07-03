@@ -211,50 +211,10 @@ app.post("/api/send-confirmation", async (req, res) => {
       ? "Appointment Confirmation - Canadian Fitness Repair"
       : "Repair Status Update - Canadian Fitness Repair";
 
-  // ======== OPTIMIZED FOOTER ========
-  const ESSENTIAL_FOOTER = `
-Contact us:
-📧 canadianfitnessrepair@gmail.com
-📞 289-925-7239
-🌐 https://canadianfitnessrepair.com`;
-
   const emailBody =
     type === "confirmation"
-      ? `Hi ${customer},
-
-This is a confirmation from Canadian Fitness Repair.
-
-Your appointment is scheduled for:
-📅 ${dateStr} at ⏰ ${timeStr}
-
-Equipment: ${equipment}
-Issue: ${issue}
-
-Service Price: $${servicePrice}
-Total (incl. tax): $${totalPrice}
-Status: ${status}
-
-If you need to reschedule, please contact us at 289-925-7239 or reply to this email.
-
-Thank you,  
-Canadian Fitness Repair
-📧 canadianfitnessrepair@gmail.com
-📞 289-925-7239
-🌐 https://canadianfitnessrepair.com`
-      : `Hi ${customer},
-
-Here's an update regarding your repair:
-
-Status: ${status}
-Equipment: ${equipment}
-
-If you have any questions, call us at 289-925-7239.
-
-Thank you,  
-Canadian Fitness Repair
-📧 canadianfitnessrepair@gmail.com
-📞 289-925-7239
-🌐 https://canadianfitnessrepair.com`;
+      ? `Hi ${customer},\n\nThis is a confirmation from Canadian Fitness Repair.\n\nYour appointment is scheduled for:\n📅 ${dateStr} at ⏰ ${timeStr}\n\nEquipment: ${equipment}\nIssue: ${issue}\n\nService Price: $${servicePrice}\nTotal (incl. tax): $${totalPrice}\nStatus: ${status}\n\nIf you need to reschedule, please contact us at 289-925-7239 or reply to this email.\n\nThank you,  \nCanadian Fitness Repair\n📧 canadianfitnessrepair@gmail.com\n📞 289-925-7239\n🌐 https://canadianfitnessrepair.com`
+      : `Hi ${customer},\n\nHere's an update regarding your repair:\n\nStatus: ${status}\nEquipment: ${equipment}\n\nIf you have any questions, call us at 289-925-7239.\n\nThank you,  \nCanadian Fitness Repair\n📧 canadianfitnessrepair@gmail.com\n📞 289-925-7239\n🌐 https://canadianfitnessrepair.com`;
 
   const smsBody = `Canadian Fitness Repair: Appt on ${dateStr} at ${timeStr} for ${equipment}, Status: ${status}. Call 289-925-7239 or visit canadianfitnessrepair.com`;
 
@@ -281,11 +241,12 @@ Canadian Fitness Repair
   }
 
   // ======== SMS HANDLING ========
-  if (appointment.phone) {
+  if (appointment.phone && appointment.carrier) {
     const carrierKey = appointment.carrier ? appointment.carrier.toLowerCase() : '';
     console.log("📲 Carrier key:", carrierKey);
 
-    if (carrierKey && carrierKey !== "unknown" && carrierGateways[carrierKey]) {
+    // Check if carrier is supported
+    if (carrierKey && carrierGateways[carrierKey]) {
       try {
         const rawPhone = appointment.phone.replace(/\D/g, "");
         console.log("📞 Raw phone number:", rawPhone);
@@ -329,16 +290,17 @@ Canadian Fitness Repair
         warnings.push(smsError);
       }
     } else {
-      // If no valid carrier or the carrier is unknown, log it as a warning
-      if (!carrierKey) {
-        smsError = "SMS skipped: Carrier information missing";
-      } else if (carrierKey === "unknown") {
-        smsError = "SMS skipped: Carrier marked as 'unknown'";
-      } else {
-        smsError = `SMS skipped: Unsupported carrier '${appointment.carrier}'`;
-      }
-      console.warn("⚠️ " + smsError);
-      warnings.push(smsError);
+      // If the carrier is not supported, log this as a warning
+      const unsupportedCarrierMsg = `⚠️ SMS skipped: Unsupported carrier '${appointment.carrier}'`;
+      console.warn(unsupportedCarrierMsg);
+      warnings.push(unsupportedCarrierMsg);
+
+      await db.collection("logs").add({
+        type: "warning",
+        appointmentId,
+        message: unsupportedCarrierMsg,
+        timestamp: new Date()
+      });
     }
   }
 
