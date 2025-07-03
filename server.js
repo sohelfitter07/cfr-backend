@@ -213,10 +213,12 @@ app.post("/api/send-confirmation", async (req, res) => {
 
   const emailBody =
     type === "confirmation"
-      ? `Hi ${customer},\n\nThis is a confirmation from Canadian Fitness Repair.\n\nYour appointment is scheduled for:\n📅 ${dateStr} at ⏰ ${timeStr}\n\nEquipment: ${equipment}\nIssue: ${issue}\n\nService Price: $${servicePrice}\nTotal (incl. tax): $${totalPrice}\nStatus: ${status}\n\nIf you need to reschedule, please contact us at 289-925-7239 or reply to this email.\n\nThank you,  \nCanadian Fitness Repair\n📧 canadianfitnessrepair@gmail.com\n📞 289-925-7239\n🌐 https://canadianfitnessrepair.com`
-      : `Hi ${customer},\n\nHere's an update regarding your repair:\n\nStatus: ${status}\nEquipment: ${equipment}\n\nIf you have any questions, call us at 289-925-7239.\n\nThank you,  \nCanadian Fitness Repair\n📧 canadianfitnessrepair@gmail.com\n📞 289-925-7239\n🌐 https://canadianfitnessrepair.com`;
+      ? `Hi ${customer},\n\nThis is a confirmation from Canadian Fitness Repair.\n\nYour appointment is scheduled for:\n📅 ${dateStr} at ⏰ ${timeStr}\n\nEquipment: ${equipment}\nIssue: ${issue}\n\nService Price: $${servicePrice}\nTotal (incl. tax): $${totalPrice}\nCurrent Status: ${status}\n\nIf you need to reschedule, please contact us at 289-925-7239 or reply to this email.\n\nThank you,  \nCanadian Fitness Repair\n📧 canadianfitnessrepair@gmail.com\n📞 289-925-7239\n🌐 https://canadianfitnessrepair.com`
+      : `Hi ${customer},\n\nHere's an update regarding your repair:\n\nStatus changed to: ${status}\nEquipment: ${equipment}\n\nIf you have any questions, call us at 289-925-7239.\n\nThank you,  \nCanadian Fitness Repair\n📧 canadianfitnessrepair@gmail.com\n📞 289-925-7239\n🌐 https://canadianfitnessrepair.com`;
 
-  const smsBody = `Your appointment with Canadian Fitness Repair is on 2025-07-03 at 14:30, is confirmed for Treadmill repair. Status: Scheduled. Call 289-925-7239 for details.`;
+      const smsBody = type === "confirmation"
+      ? `Your appointment with Canadian Fitness Repair is on ${dateStr} at ${timeStr}, is confirmed for ${equipment}. Status: ${status}. Call 289-925-7239 for details.`
+      : `Repair Update: Your ${equipment} repair status changed to ${status}. Canadian Fitness Repair Call 2899257239 for any questions`;    
   console.log(smsBody.length);
   let emailSent = false;
   let smsSent = false;
@@ -381,24 +383,27 @@ Canadian Fitness Repair
       const customer = appointment.customer || "Customer";
 
       const emailSubject = "⏰ Appointment Reminder - Canadian Fitness Repair";
-      const emailBody = `Hi ${customer},
+      const emailBody =
+        `Hi ${customer},
 
-This is a reminder from Canadian Fitness Repair.
+          Just a friendly reminder from Canadian Fitness Repair!
 
-You have an upcoming appointment:
-📅 ${dateStr} at ⏰ ${timeStr}
-Equipment: ${equipment}
-Status: ${status}
+          You have an upcoming service appointment:
 
-Please contact us if you need to reschedule.
+          📅 Date: ${dateStr}  
+          ⏰ Time: ${timeStr}  
+          🔧 Equipment: ${equipment}  
+          📌 Current Status: ${status}
 
-Thank you,  
-Canadian Fitness Repair  
-📧 canadianfitnessrepair@gmail.com  
-📞 289-925-7239  
-🌐 https://canadianfitnessrepair.com`;
+          If you need to reschedule, please contact us at 289-925-7239 or reply to this email.
 
-const smsBody = `Canadian Fitness Repair: Appt on ${dateStr} at ${timeStr}, ${equipment}, Status: ${status}. Call 289-925-7239 or visit canadianfitnessrepair.com`;
+          Thank you,  
+          Canadian Fitness Repair  
+          📧 canadianfitnessrepair@gmail.com  
+          📞 289-925-7239  
+          🌐 https://canadianfitnessrepair.com`;
+
+const smsBody = `⏰ Reminder: Appt on ${dateStr} at ${timeStr} for ${equipment}. Status: ${status}. Call 289-925-7239 – Canadian Fitness Repair.`;
 
 
       let emailSent = false;
@@ -476,6 +481,85 @@ const smsBody = `Canadian Fitness Repair: Appt on ${dateStr} at ${timeStr}, ${eq
   }
 });
 
+app.get("/api/dev/preview-template", (req, res) => {
+  const type = req.query.type || "confirmation";
+  const format = req.query.format || "email";
+
+  const sample = {
+    customer: "John Doe",
+    equipment: "Treadmill",
+    issue: "Motor not running",
+    status: "Scheduled",
+    dateStr: "2025-07-03",
+    timeStr: "14:30",
+    servicePrice: "49.99",
+    totalPrice: "67.49"
+  };
+
+  let output = "";
+
+  if (format === "email") {
+    res.type("html");
+    if (type === "reminder") {
+      output = `
+        <div>
+          Hi ${sample.customer},<br><br>
+          Just a friendly reminder from Canadian Fitness Repair!<br><br>
+          You have an upcoming service appointment:<br><br>
+          📅 Date: ${sample.dateStr} <br>
+          ⏰ Time: ${sample.timeStr} <br>
+          🔧 Equipment: ${sample.equipment} <br>
+          📌 Current Status: ${sample.status}<br><br>
+          If you need to reschedule, please contact us at 289-925-7239 or reply to this email.<br><br>
+          ${EMAIL_FOOTER.replace(/\n/g, "<br>")}
+        </div>
+      `;
+    } else if (type === "confirmation") {
+      output = `
+        <div>
+          Hi ${sample.customer},<br><br>
+          This is a confirmation from Canadian Fitness Repair.<br><br>
+          Your appointment is scheduled for:<br>
+          📅 ${sample.dateStr} at ⏰ ${sample.timeStr}<br><br>
+          Equipment: ${sample.equipment}<br>
+          Issue: ${sample.issue}<br><br>
+          Service Price: $${sample.servicePrice}<br>
+          Total (incl. tax): $${sample.totalPrice}<br>
+          Status: ${sample.status}<br><br>
+          If you need to reschedule, please contact us at 289-925-7239 or reply to this email.<br><br>
+          ${EMAIL_FOOTER.replace(/\n/g, "<br>")}
+        </div>
+      `;
+    } else if (type === "update") {
+      output = `
+        <div>
+          Hi ${sample.customer},<br><br>
+          Here's an update regarding your repair:<br><br>
+          Status: ${sample.status}<br>
+          Equipment: ${sample.equipment}<br><br>
+          If you have any questions, call us at 289-925-7239.<br><br>
+          ${EMAIL_FOOTER.replace(/\n/g, "<br>")}
+        </div>
+      `;
+    } else {
+      output = "<div>Unsupported preview type or format.</div>";
+    }
+  } else {
+    // Plain text for SMS
+    res.type("text");
+    if (type === "reminder") {
+      output = `⏰ Reminder: Appt on ${sample.dateStr} at ${sample.timeStr} for ${sample.equipment}. Status: ${sample.status}. Call 289-925-7239 – Canadian Fitness Repair.`;
+    } else if (type === "confirmation") {
+      output = `Your appointment with Canadian Fitness Repair is on ${sample.dateStr} at ${sample.timeStr}, is confirmed for ${sample.equipment}. Status: ${sample.status}. Call 289-925-7239 for details.`;
+    } else if (type === "update") {
+      output = `🔧 Repair update: Your ${sample.equipment} status changed to "${sample.status}". Need help? Call 289-925-7239 – Canadian Fitness Repair.`;
+    } else {
+      output = "Unsupported preview type or format.";
+    }
+  }
+
+  res.send(output);
+});
 
 
 // ✅ Start server
