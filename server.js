@@ -211,14 +211,18 @@ app.post("/api/send-confirmation", async (req, res) => {
       ? "Appointment Confirmation - Canadian Fitness Repair"
       : "Repair Status Update - Canadian Fitness Repair";
 
-  const emailBody =
-    type === "confirmation"
-      ? `Hi ${customer},\n\nThis is a confirmation from Canadian Fitness Repair.\n\nYour appointment is scheduled for:\n📅 ${dateStr} at ⏰ ${timeStr}\n\nEquipment: ${equipment}\nIssue: ${issue}\n\nService Price: $${servicePrice}\nTotal (incl. tax): $${totalPrice}\nCurrent Status: ${status}\n\nIf you need to reschedule, please contact us at 289-925-7239 or reply to this email.\n\nThank you,  \nCanadian Fitness Repair\n📧 canadianfitnessrepair@gmail.com\n📞 289-925-7239\n🌐 https://canadianfitnessrepair.com`
-      : `Hi ${customer},\n\nHere's an update regarding your repair:\n\nStatus changed to: ${status}\nEquipment: ${equipment}\n\nIf you have any questions, call us at 289-925-7239.\n\nThank you,  \nCanadian Fitness Repair\n📧 canadianfitnessrepair@gmail.com\n📞 289-925-7239\n🌐 https://canadianfitnessrepair.com`;
-
-      const smsBody = type === "confirmation"
-      ? `Your appointment with Canadian Fitness Repair is on ${dateStr} at ${timeStr}, is confirmed for ${equipment}. Status: ${status}. Call 289-925-7239 for details.`
-      : `Repair Update: Your ${equipment} repair status changed to ${status}. Canadian Fitness Repair Call 2899257239 for any questions`;    
+      const emailBody =
+      appointment.editedEmailBody?.trim() ||
+      (type === "confirmation"
+        ? `Hi ${customer},\n\nThis is a confirmation from Canadian Fitness Repair.\n\nYour appointment is scheduled for:\n📅 ${dateStr} at ⏰ ${timeStr}\n\nEquipment: ${equipment}\nIssue: ${issue}\n\nService Price: $${servicePrice}\nTotal (incl. tax): $${totalPrice}\nStatus: ${status}\n\nIf you need to reschedule, please contact us at 289-925-7239 or reply to this email.\n\n${EMAIL_FOOTER}`
+        : `Hi ${customer},\n\nHere's an update regarding your repair:\n\nStatus: ${status}\nEquipment: ${equipment}\n\nIf you have any questions, call us at 289-925-7239.\n\n${EMAIL_FOOTER}`);
+    
+    const smsBody =
+      appointment.editedSmsBody?.trim() ||
+      (type === "confirmation"
+        ? `Your appointment with Canadian Fitness Repair is on ${dateStr} at ${timeStr}, is confirmed for ${equipment}. Status: ${status}. Call 289-925-7239 for details.`
+        : `🔧 Repair update: Your ${equipment} status changed to "${status}". Need help? Call 289-925-7239 – Canadian Fitness Repair.`);
+    
   console.log(smsBody.length);
   let emailSent = false;
   let smsSent = false;
