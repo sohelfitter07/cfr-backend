@@ -545,14 +545,13 @@ app.get("/api/dev/preview-template", (req, res) => {
       output = "<div>Unsupported preview type or format.</div>";
     }
   } else {
-    // Plain text for SMS
     res.type("text");
     if (type === "reminder") {
       output = `⏰ Reminder: Appt on ${sample.dateStr} at ${sample.timeStr} for ${sample.equipment}. Status: ${sample.status}. Call 289-925-7239 – Canadian Fitness Repair.`;
     } else if (type === "confirmation") {
       output = `Your appointment with Canadian Fitness Repair is on ${sample.dateStr} at ${sample.timeStr}, is confirmed for ${sample.equipment}. Status: ${sample.status}. Call 289-925-7239 for details.`;
     } else if (type === "update") {
-      output = `🔧 Repair update: Your ${sample.equipment} status changed to "${sample.status}". Need help? Call 289-925-7239 – Canadian Fitness Repair.`;
+      output = `🔧 Repair update: Your ${sample.equipment} status changed to \"${sample.status}\". Need help? Call 289-925-7239 – Canadian Fitness Repair.`;
     } else {
       output = "Unsupported preview type or format.";
     }
@@ -560,6 +559,7 @@ app.get("/api/dev/preview-template", (req, res) => {
 
   res.send(output);
 });
+
 
 
 // ✅ Start server
