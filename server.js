@@ -278,14 +278,18 @@ ${ESSENTIAL_FOOTER}`;
   // ======== SMS HANDLING ========
   if (appointment.phone) {
     const carrierKey = appointment.carrier ? appointment.carrier.toLowerCase() : '';
+    console.log("📲 Carrier key:", carrierKey);
     
-    // Check if carrier is valid and supported
     if (carrierKey && carrierKey !== "unknown" && carrierGateways[carrierKey]) {
       try {
         const rawPhone = appointment.phone.replace(/\D/g, "");
-        const smsTo = `${rawPhone}@${carrierGateways[carrierKey]}`;
-
-        console.log("📨 Attempting to send SMS to:", smsTo);
+        console.log("📞 Raw phone number:", rawPhone);
+        
+        const smsGatewayDomain = carrierGateways[carrierKey];
+        console.log("🏁 SMS Gateway domain:", smsGatewayDomain);
+        
+        const smsTo = `${rawPhone}@${smsGatewayDomain}`;
+        console.log("📨 Sending SMS to:", smsTo);
         console.log("📨 SMS body:", smsBody);
         
         await retry(() =>
@@ -311,11 +315,11 @@ ${ESSENTIAL_FOOTER}`;
       } else {
         smsError = `SMS skipped: Unsupported carrier '${appointment.carrier}'`;
       }
-    
       console.warn("⚠️ " + smsError);
       warnings.push(smsError);
-    }    
+    }
   }
+  
 
   const deliveryStatus =
     emailSent && smsSent ? "success" : emailSent ? "partial_success" : "failed";
