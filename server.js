@@ -232,6 +232,7 @@ app.post("/api/send-confirmation", async (req, res) => {
   // ✅ Send Email
   if (appointment.email) {
     try {
+      console.log("✉️ Sending email from:", process.env.EMAIL_USER); // 👈 INSERT HERE
       await retry(() =>
         emailTransporter.sendMail({
           from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
@@ -243,6 +244,7 @@ app.post("/api/send-confirmation", async (req, res) => {
       emailSent = true;
     } catch (err) {
       console.error("❌ Email failed:", err.message);
+      warnings.push("Email failed: " + err.message); // <-- add this
     }
   }
 
