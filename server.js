@@ -221,8 +221,7 @@ app.post("/api/send-confirmation", async (req, res) => {
         appointment.editedSmsBody?.trim() ||
         (type === "confirmation"
           ? `Your appt. with Canadian Fitness Repair on ${dateStr} at ${timeStr} is confirmed for ${equipment}. Status: ${status}. Call 289-925-7239.`
-          : `🔧 Repair update: Your ${equipment} status changed to "${status}". Need help? Call 289-925-7239 – Canadian Fitness Repair.`);
-      
+          : `🔧 Repair update: Your ${equipment} status changed to "${status}". Need help? Call 289-925-7239 – Canadian Fitness Repair.`);      
     
   console.log(smsBody.length);
   let emailSent = false;
