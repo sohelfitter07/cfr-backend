@@ -238,7 +238,8 @@ app.post("/api/send-confirmation", async (req, res) => {
           from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
           to: appointment.email,
           subject: emailSubject,
-          text: emailBody
+          text: emailBody,
+          html: emailBody.replace(/\n/g, "<br>")
         })
       );
       emailSent = true;
