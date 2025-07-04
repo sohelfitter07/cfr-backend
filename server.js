@@ -247,7 +247,7 @@ app.post("/api/send-confirmation", async (req, res) => {
   }
 
   // ======== SMS HANDLING ========
-  if (appointment.phone && appointment.carrier) {
+  if (appointment.phone?.trim() && appointment.carrier?.trim()) {
     const carrierKey = appointment.carrier ? appointment.carrier.toLowerCase() : '';
     console.log("📲 Carrier key:", carrierKey);
 
