@@ -160,50 +160,48 @@ app.post("/api/send-sms", async (req, res) => {
   }
 });
 
-// ✅ Geocoding endpoint for address autocomplete
-app.post("/api/geocode", async (req, res) => {
-  const { query } = req.body;
-  
-  if (!query || query.length < 3) {
-    return res.status(400).json({ 
-      success: false, 
-      error: "Query must be at least 3 characters long" 
-    });
+// ✅ Geocoding endpoint for address autocomplete (via GET)
+app.get("/api/geocode", async (req, res) => {
+  // Read the query from the URL ?q=...
+  const query = (req.query.q || "").trim();
+  if (query.length < 3) {
+    return res.status(400).json({ error: "Query must be at least 3 characters long" });
   }
 
   try {
-    // Make request to Nominatim with Canada filtering
-    const response = await axios.get('https://nominatim.openstreetmap.org/search', {
-      params: {
-        q: query,
-        format: 'json',
-        addressdetails: 1,
-        limit: 5,
-        countrycodes: 'ca', // Canada only
-        bounded: 1,
-        viewbox: '-141,41,-52,83' // Canada bounding box (west, south, east, north)
-      },
-      headers: {
-        'User-Agent': 'CanadianFitnessRepair/1.0 (canadianfitnessrepair@gmail.com)' // Required by Nominatim
+    // Ask Nominatim (Canada only, with a bounding box)
+    const response = await axios.get(
+      "https://nominatim.openstreetmap.org/search",
+      {
+        params: {
+          q: query,
+          format: "json",
+          addressdetails: 1,
+          limit: 5,
+          countrycodes: "ca",
+          bounded: 1,
+          viewbox: "-141,41,-52,83"
+        },
+        headers: {
+          // Per Nominatim’s usage policy, include a user‐agent identifying your app
+          "User-Agent": "CanadianFitnessRepair/1.0 (canadianfitnessrepair@gmail.com)"
+        }
       }
-    });
+    );
 
-    // Filter results to include only relevant Canadian addresses
-    const canadianResults = response.data.filter(result => {
-      return result.address && 
-             result.address.country_code === 'ca' && 
-             !['waterway', 'water', 'river', 'lake'].includes(result.type);
-    });
+    // Keep only Canadian street/house results
+    const canadianResults = response.data.filter(r =>
+      r.address?.country_code === "ca" &&
+      !["waterway", "water", "river", "lake"].includes(r.type)
+    );
 
     res.json(canadianResults);
   } catch (error) {
-    console.error('Geocoding proxy error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Geocoding service unavailable' 
-    });
+    console.error("Geocoding proxy error:", error);
+    res.status(500).json({ error: "Geocoding service unavailable" });
   }
 });
+
 
 // ✅ Appointment confirmation
 app.post("/api/send-confirmation", async (req, res) => {
