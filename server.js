@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const nodemailer = require("nodemailer");
 const admin = require("firebase-admin");
+const axios = require("axios"); // Add axios for Nominatim requests
 const serviceAccount = require("./firebase-service-account.json");
 
 const app = express();
@@ -159,6 +160,50 @@ app.post("/api/send-sms", async (req, res) => {
   }
 });
 
+// ✅ Geocoding endpoint for address autocomplete
+app.post("/api/geocode", async (req, res) => {
+  const { query } = req.body;
+  
+  if (!query || query.length < 3) {
+    return res.status(400).json({ 
+      success: false, 
+      error: "Query must be at least 3 characters long" 
+    });
+  }
+
+  try {
+    // Make request to Nominatim with Canada filtering
+    const response = await axios.get('https://nominatim.openstreetmap.org/search', {
+      params: {
+        q: query,
+        format: 'json',
+        addressdetails: 1,
+        limit: 5,
+        countrycodes: 'ca', // Canada only
+        bounded: 1,
+        viewbox: '-141,41,-52,83' // Canada bounding box (west, south, east, north)
+      },
+      headers: {
+        'User-Agent': 'CanadianFitnessRepair/1.0 (canadianfitnessrepair@gmail.com)' // Required by Nominatim
+      }
+    });
+
+    // Filter results to include only relevant Canadian addresses
+    const canadianResults = response.data.filter(result => {
+      return result.address && 
+             result.address.country_code === 'ca' && 
+             !['waterway', 'water', 'river', 'lake'].includes(result.type);
+    });
+
+    res.json(canadianResults);
+  } catch (error) {
+    console.error('Geocoding proxy error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Geocoding service unavailable' 
+    });
+  }
+});
 
 // ✅ Appointment confirmation
 app.post("/api/send-confirmation", async (req, res) => {
@@ -566,8 +611,6 @@ app.post("/api/dev/preview-template", (req, res) => {
 
   res.send(output);
 });
-
-
 
 // ✅ Start server
 app.listen(port, () => {
