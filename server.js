@@ -59,6 +59,15 @@ const carrierGateways = {
   sasktel: "sms.sasktel.com",
   videotron: "texto.videotron.ca"
 };
+
+// Function to determine greeting based on the time of day
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
 // ✅ ADD THIS RIGHT AFTER CARRIERGATEWAYS
 function isValidCanadianCarrier(carrier) {
   const validCarriers = [
@@ -134,31 +143,61 @@ app.post("/api/send-email", async (req, res) => {
 });
 
 // ✅ General SMS endpoint
+// app.post("/api/send-sms", async (req, res) => {
+//   const { phoneNumber, carrier, message } = req.body;
+//   if (!phoneNumber || !carrier || !message) {
+//     return res.status(400).json({ success: false, error: "Missing phone/carrier/message" });
+//   }
+
+//   const formattedPhone = phoneNumber.replace(/\D/g, '');
+//   const gateway = carrierGateways[carrier.toLowerCase()];
+//   if (!gateway) {
+//     return res.status(400).json({ success: false, error: "Unsupported carrier" });
+//   }
+
+//   try {
+//     await emailTransporter.sendMail({
+//       from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+//       to: `${formattedPhone}@${gateway}`,
+//       subject: '',
+//       text: message.substring(0, 160)
+//     });
+//     res.json({ success: true });
+//   } catch (error) {
+//     console.error("SMS error:", error);
+//     res.status(500).json({ success: false, error: "SMS failed" });
+//   }
+// });
+
+// ✅ General SMS endpoint (Updated to open SMS app instead of sending via gateway)
 app.post("/api/send-sms", async (req, res) => {
-  const { phoneNumber, carrier, message } = req.body;
-  if (!phoneNumber || !carrier || !message) {
-    return res.status(400).json({ success: false, error: "Missing phone/carrier/message" });
+  const { appointmentId, type } = req.body;
+  const db = admin.firestore();
+  const docRef = db.collection("appointments").doc(appointmentId);
+  const snap = await docRef.get();
+
+  if (!snap.exists) {
+    return res.status(404).json({ success: false, error: "Appointment not found" });
   }
 
-  const formattedPhone = phoneNumber.replace(/\D/g, '');
-  const gateway = carrierGateways[carrier.toLowerCase()];
-  if (!gateway) {
-    return res.status(400).json({ success: false, error: "Unsupported carrier" });
-  }
+  const appointment = snap.data();
+  const smsBody = generateSMSBody(appointment, type);
 
-  try {
-    await emailTransporter.sendMail({
-      from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
-      to: `${formattedPhone}@${gateway}`,
-      subject: '',
-      text: message.substring(0, 160)
-    });
-    res.json({ success: true });
-  } catch (error) {
-    console.error("SMS error:", error);
-    res.status(500).json({ success: false, error: "SMS failed" });
-  }
+  await db.collection("logs").add({
+    type: "sms",
+    appointmentId,
+    smsSkipped: true, // Log that SMS was skipped (we're opening the SMS app, not sending via carrier)
+    timestamp: new Date()
+  });
+
+  // Response includes the prefilled phone number and SMS body
+  res.json({
+    success: true,
+    smsBody: smsBody,
+    phoneNumber: appointment.phone
+  });
 });
+
 
 // ✅ Geocoding endpoint for address autocomplete (via GET)
 app.get("/api/geocode", async (req, res) => {
@@ -203,6 +242,192 @@ app.get("/api/geocode", async (req, res) => {
 });
 
 
+// // ✅ Appointment confirmation
+// app.post("/api/send-confirmation", async (req, res) => {
+//   const { appointmentId, type } = req.body;
+//   if (!appointmentId || !type) {
+//     return res.status(400).json({ success: false, error: "Missing appointmentId or type" });
+//   }
+
+//   const db = admin.firestore();
+//   const docRef = db.collection("appointments").doc(appointmentId);
+//   const snap = await docRef.get();
+//   if (!snap.exists) {
+//     return res.status(404).json({ success: false, error: "Appointment not found" });
+//   }
+
+//   const appointment = snap.data();
+  
+//   // ======== DEBUG LOG ========
+//   console.log(`[CONFIRMATION DEBUG] Appointment ${appointmentId}:`, {
+//     customer: appointment.customer,
+//     phone: appointment.phone,
+//     carrier: appointment.carrier || 'MISSING',
+//     email: appointment.email || 'MISSING',
+//     hasEmail: !!appointment.email,
+//     hasSMS: !!(appointment.phone && appointment.carrier)
+//   });
+
+//   if (!appointment.email && !appointment.phone) {
+//     return res.status(400).json({ success: false, error: "No contact info available" });
+//   }
+
+//   const dateObj = appointment.date.toDate?.() || new Date();
+//   const dateStr = dateObj.toLocaleDateString("en-CA");
+//   const timeStr = dateObj.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit" });
+
+//   const {
+//     customer,
+//     equipment = "",
+//     issue = "N/A",
+//     basePrice = 0,
+//     price = 0,
+//     status = "Scheduled"
+//   } = appointment;
+
+//   const servicePrice = basePrice.toFixed(2);
+//   const totalPrice = price.toFixed(2);
+
+//   const emailSubject =
+//     type === "confirmation"
+//       ? "Appointment Confirmation - Canadian Fitness Repair"
+//       : "Repair Status Update - Canadian Fitness Repair";
+
+//       const emailBody =
+//       appointment.editedEmailBody?.trim() ||
+//       (type === "confirmation"
+//         ? `Hi ${customer},\n\nThis is a confirmation from Canadian Fitness Repair.\n\nYour appointment is scheduled for:\n📅 ${dateStr} at ⏰ ${timeStr}\n\nEquipment: ${equipment}\nIssue: ${issue}\n\nService Price: $${servicePrice}\nTotal (incl. tax): $${totalPrice}\nStatus: ${status}\n\nIf you need to reschedule, please contact us at 289-925-7239 or reply to this email.\n\n${EMAIL_FOOTER}`
+//         : `Hi ${customer},\n\nHere's an update regarding your repair:\n\nStatus: ${status}\nEquipment: ${equipment}\n\nIf you have any questions, call us at 289-925-7239.\n\n${EMAIL_FOOTER}`);
+    
+//         const smsBody =
+//         appointment.editedSmsBody?.trim() ||
+//         (type === "confirmation"
+//           ? `Your appt. with Canadian Fitness Repair on ${dateStr} at ${timeStr} is confirmed for ${equipment}. Status: ${status}. Call 289-925-7239.`
+//           : `🔧 Repair update: Your ${equipment} status changed to "${status}". Need help? Call 289-925-7239 – Canadian Fitness Repair.`);      
+    
+//   console.log(smsBody.length);
+//   let emailSent = false;
+//   let smsSent = false;
+//   let smsError = null;
+//   let warnings = []; // To collect warnings for frontend
+
+//   // ✅ Send Email
+//   if (appointment.email) {
+//     try {
+//       console.log("✉️ Sending email from:", process.env.EMAIL_USER); // 👈 INSERT HERE
+//       await retry(() =>
+//         emailTransporter.sendMail({
+//           from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+//           to: appointment.email,
+//           subject: emailSubject,
+//           text: emailBody,
+//           html: emailBody.replace(/\n/g, "<br>")
+//         })
+//       );
+//       emailSent = true;
+//     } catch (err) {
+//       console.error("❌ Email failed:", err.message);
+//       warnings.push("Email failed: " + err.message); // <-- add this
+//     }
+//   }
+
+//   // ======== SMS HANDLING ========
+//   if (appointment.phone?.trim() && appointment.carrier?.trim()) {
+//     const carrierKey = appointment.carrier ? appointment.carrier.toLowerCase() : '';
+//     console.log("📲 Carrier key:", carrierKey);
+
+//     // Check if carrier is supported
+//     if (carrierKey && carrierGateways[carrierKey]) {
+//       try {
+//         const rawPhone = appointment.phone.replace(/\D/g, "");
+//         console.log("📞 Raw phone number:", rawPhone);
+
+//         const smsGatewayDomain = carrierGateways[carrierKey];
+//         console.log("🏁 SMS Gateway domain:", smsGatewayDomain);
+
+//         const smsTo = `${rawPhone}@${smsGatewayDomain}`;
+//         console.log("📨 Sending SMS to:", smsTo);
+//         console.log("📨 SMS body:", smsBody);
+
+//         // ✅ Check SMS length and log warning if needed
+//         if (smsBody.length > 160) {
+//           const warningMsg = `⚠️ SMS exceeds 160 chars (${smsBody.length}). May be dropped or split.`;
+//           console.warn(warningMsg);
+//           warnings.push(warningMsg);
+
+//           await db.collection("logs").add({
+//             type: "warning",
+//             appointmentId,
+//             message: warningMsg,
+//             timestamp: new Date()
+//           });
+//         }
+
+//         await retry(() =>
+//           emailTransporter.sendMail({
+//             from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
+//             to: smsTo,
+//             subject: "",
+//             text: smsBody
+//           })
+//         );
+
+//         console.log("✅ SMS send succeeded");
+//         smsSent = true;
+
+//       } catch (err) {
+//         smsError = `SMS failed: ${err.message}`;
+//         console.error("❌ SMS failed:", err);
+//         warnings.push(smsError);
+//       }
+//     } else {
+//       // If the carrier is not supported, log this as a warning
+//       const unsupportedCarrierMsg = `⚠️ SMS skipped: Unsupported carrier '${appointment.carrier}'`;
+//       console.warn(unsupportedCarrierMsg);
+//       warnings.push(unsupportedCarrierMsg);
+
+//       await db.collection("logs").add({
+//         type: "warning",
+//         appointmentId,
+//         message: unsupportedCarrierMsg,
+//         timestamp: new Date()
+//       });
+//     }
+//   }
+
+//   const deliveryStatus =
+//     emailSent && smsSent ? "success" :
+//     emailSent ? "partial_success" :
+//     smsSent && !appointment.email ? "success" : // ✅ If SMS sent and no email was expected
+//     smsSent ? "partial_success" :
+//     "failed";
+
+//   await docRef.update({
+//     confirmationSent: true,
+//     confirmationSentAt: new Date(),
+//     lastStatusSent: type,
+//     lastAttemptStatus: deliveryStatus,
+//     needsResend: false
+//   });
+
+//   await db.collection("logs").add({
+//     type: "confirmation",
+//     appointmentId,
+//     emailSent,
+//     smsSent,
+//     status: deliveryStatus,
+//     smsError,
+//     timestamp: new Date()
+//   });
+
+//   // ======== RESPONSE WITH WARNINGS ========
+//   res.json({
+//     success: true,
+//     status: deliveryStatus,
+//     warnings
+//   });
+// });
+
 // ✅ Appointment confirmation
 app.post("/api/send-confirmation", async (req, res) => {
   const { appointmentId, type } = req.body;
@@ -237,45 +462,80 @@ app.post("/api/send-confirmation", async (req, res) => {
   const dateStr = dateObj.toLocaleDateString("en-CA");
   const timeStr = dateObj.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit" });
 
-  const {
-    customer,
-    equipment = "",
-    issue = "N/A",
-    basePrice = 0,
-    price = 0,
-    status = "Scheduled"
-  } = appointment;
-
+  const { customer, equipment = "", issue = "N/A", basePrice = 0, price = 0, status = "Scheduled" } = appointment;
   const servicePrice = basePrice.toFixed(2);
   const totalPrice = price.toFixed(2);
 
-  const emailSubject =
-    type === "confirmation"
-      ? "Appointment Confirmation - Canadian Fitness Repair"
-      : "Repair Status Update - Canadian Fitness Repair";
+  const emailSubject = type === "confirmation" ? "Appointment Confirmation - Canadian Fitness Repair" : "Repair Status Update - Canadian Fitness Repair";
 
-      const emailBody =
-      appointment.editedEmailBody?.trim() ||
-      (type === "confirmation"
-        ? `Hi ${customer},\n\nThis is a confirmation from Canadian Fitness Repair.\n\nYour appointment is scheduled for:\n📅 ${dateStr} at ⏰ ${timeStr}\n\nEquipment: ${equipment}\nIssue: ${issue}\n\nService Price: $${servicePrice}\nTotal (incl. tax): $${totalPrice}\nStatus: ${status}\n\nIf you need to reschedule, please contact us at 289-925-7239 or reply to this email.\n\n${EMAIL_FOOTER}`
-        : `Hi ${customer},\n\nHere's an update regarding your repair:\n\nStatus: ${status}\nEquipment: ${equipment}\n\nIf you have any questions, call us at 289-925-7239.\n\n${EMAIL_FOOTER}`);
-    
-        const smsBody =
-        appointment.editedSmsBody?.trim() ||
-        (type === "confirmation"
-          ? `Your appt. with Canadian Fitness Repair on ${dateStr} at ${timeStr} is confirmed for ${equipment}. Status: ${status}. Call 289-925-7239.`
-          : `🔧 Repair update: Your ${equipment} status changed to "${status}". Need help? Call 289-925-7239 – Canadian Fitness Repair.`);      
-    
-  console.log(smsBody.length);
+  // Generate Email Body
+  const emailBody = appointment.editedEmailBody?.trim() ||
+    (type === "confirmation"
+      ? `
+        <p>${getGreeting()}, ${customer},</p>
+        <p>This is a <strong>service appointment booking confirmation</strong> from <strong>Canadian Fitness Repair</strong>.</p>
+        <p><strong>Appointment Details:</strong></p>
+        <p>📅 <strong>Date:</strong> ${dateStr}<br>⏰ <strong>Time:</strong> ${timeStr}<br>🔧 <strong>Equipment:</strong> ${equipment}<br>📝 <strong>Issue:</strong> ${issue}<br>💵 <strong>Total:</strong> $${totalPrice} (includes 13% Ontario tax)<br>📌 <strong>Status:</strong> ${status}</p>
+        <p>If you need to reschedule, please contact us <strong>at least 24 hours in advance</strong> by replying to this email or calling <strong>289-925-7239</strong>.</p>
+        <p>To help us prepare, please send clear photos of your <strong>${equipment}</strong>, especially any labels showing the <strong>part number</strong>, <strong>model number</strong>, or <strong>serial number</strong>. You can reply to this email or text us — whichever is more convenient for you.</p>
+        <p>Thank you!<br><br>– <strong>Canadian Fitness Repair</strong><br>📧 canadianfitnessrepair@gmail.com<br>📞 289-925-7239<br>🌐 <a href="https://canadianfitnessrepair.com">canadianfitnessrepair.com</a></p>
+      `
+      : `
+        <p>${getGreeting()}, ${customer},</p>
+        <p>We’d like to update you regarding your repair with <strong>Canadian Fitness Repair</strong>.</p>
+        <p><strong>Equipment:</strong> ${equipment}<br><strong>New Status:</strong> ${status}</p>
+        <p>If you have any questions or need clarification, feel free to reply to this email or call us at <strong>289-925-7239</strong>.</p>
+        <p>Thank you!<br><br>– <strong>Canadian Fitness Repair</strong><br>📧 canadianfitnessrepair@gmail.com<br>📞 289-925-7239<br>🌐 <a href="https://canadianfitnessrepair.com">canadianfitnessrepair.com</a></p>
+      `
+    );
+
+  // Generate SMS Body
+  const smsBody = appointment.editedSmsBody?.trim() ||
+    (type === "confirmation"
+      ? `
+        ${getGreeting()}, ${customer},  
+        This is a service appointment booking confirmation from Canadian Fitness Repair.
+
+        🛠 Appointment Details:
+        📅 Date: ${dateStr}
+        ⏰ Time: ${timeStr}
+        🔧 Equipment: ${equipment}
+        📝 Issue: ${issue}
+        💵 Total: $${totalPrice} (includes 13% ON tax)
+        📌 Status: ${status}
+
+        If you need to reschedule, please notify us at least 24 hours in advance by calling 289-925-7239.
+
+        To help us prepare, please send pictures of your ${equipment} (labels with part, model, or serial numbers). You can reply by text or email — whichever is easier for you.
+
+        – Canadian Fitness Repair
+        canadianfitnessrepair.com
+        canadianfitnessrepair@gmail.com
+      `
+      : `
+        ${getGreeting()}, ${customer},  
+        Your repair update from Canadian Fitness Repair:
+
+        🔧 Equipment: ${equipment}  
+        📌 New Status: ${status}
+
+        If you have any questions, reply to this text or call 289-925-7239.
+
+        – Canadian Fitness Repair  
+        canadianfitnessrepair.com  
+        canadianfitnessrepair@gmail.com
+      `
+    );
+
   let emailSent = false;
   let smsSent = false;
   let smsError = null;
-  let warnings = []; // To collect warnings for frontend
+  let warnings = [];
 
   // ✅ Send Email
   if (appointment.email) {
     try {
-      console.log("✉️ Sending email from:", process.env.EMAIL_USER); // 👈 INSERT HERE
+      console.log("✉️ Sending email from:", process.env.EMAIL_USER);
       await retry(() =>
         emailTransporter.sendMail({
           from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
@@ -288,7 +548,7 @@ app.post("/api/send-confirmation", async (req, res) => {
       emailSent = true;
     } catch (err) {
       console.error("❌ Email failed:", err.message);
-      warnings.push("Email failed: " + err.message); // <-- add this
+      warnings.push("Email failed: " + err.message);
     }
   }
 
@@ -297,70 +557,21 @@ app.post("/api/send-confirmation", async (req, res) => {
     const carrierKey = appointment.carrier ? appointment.carrier.toLowerCase() : '';
     console.log("📲 Carrier key:", carrierKey);
 
-    // Check if carrier is supported
     if (carrierKey && carrierGateways[carrierKey]) {
-      try {
-        const rawPhone = appointment.phone.replace(/\D/g, "");
-        console.log("📞 Raw phone number:", rawPhone);
-
-        const smsGatewayDomain = carrierGateways[carrierKey];
-        console.log("🏁 SMS Gateway domain:", smsGatewayDomain);
-
-        const smsTo = `${rawPhone}@${smsGatewayDomain}`;
-        console.log("📨 Sending SMS to:", smsTo);
-        console.log("📨 SMS body:", smsBody);
-
-        // ✅ Check SMS length and log warning if needed
-        if (smsBody.length > 160) {
-          const warningMsg = `⚠️ SMS exceeds 160 chars (${smsBody.length}). May be dropped or split.`;
-          console.warn(warningMsg);
-          warnings.push(warningMsg);
-
-          await db.collection("logs").add({
-            type: "warning",
-            appointmentId,
-            message: warningMsg,
-            timestamp: new Date()
-          });
-        }
-
-        await retry(() =>
-          emailTransporter.sendMail({
-            from: `"Canadian Fitness Repair" <${process.env.EMAIL_USER}>`,
-            to: smsTo,
-            subject: "",
-            text: smsBody
-          })
-        );
-
-        console.log("✅ SMS send succeeded");
-        smsSent = true;
-
-      } catch (err) {
-        smsError = `SMS failed: ${err.message}`;
-        console.error("❌ SMS failed:", err);
-        warnings.push(smsError);
-      }
+      smsSent = true;
+      console.log("📞 SMS will be handled on frontend, skipping carrier SMS sending.");
     } else {
-      // If the carrier is not supported, log this as a warning
+      // Unsupported carrier
       const unsupportedCarrierMsg = `⚠️ SMS skipped: Unsupported carrier '${appointment.carrier}'`;
       console.warn(unsupportedCarrierMsg);
       warnings.push(unsupportedCarrierMsg);
-
-      await db.collection("logs").add({
-        type: "warning",
-        appointmentId,
-        message: unsupportedCarrierMsg,
-        timestamp: new Date()
-      });
     }
   }
 
-  const deliveryStatus =
-    emailSent && smsSent ? "success" :
+  const deliveryStatus = emailSent && smsSent ? "success" :
     emailSent ? "partial_success" :
-    smsSent && !appointment.email ? "success" : // ✅ If SMS sent and no email was expected
-    smsSent ? "partial_success" :
+    smsSent && !appointment.email ? "success" : 
+    smsSent ? "partial_success" : 
     "failed";
 
   await docRef.update({
@@ -388,6 +599,7 @@ app.post("/api/send-confirmation", async (req, res) => {
     warnings
   });
 });
+
 
 
 // ✅ Reminder email & SMS to customer
