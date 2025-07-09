@@ -743,84 +743,30 @@ const smsBody = `⏰ Reminder: Appt on ${dateStr} at ${timeStr} for ${equipment}
   }
 });
 
-app.post("/api/dev/preview-template", (req, res) => {
+app.post("/api/dev/preview-template", async (req, res) => {
   const type = req.query.type || "confirmation";
   const format = req.query.format || "email";
+  const appointment = req.body;
 
-  const {
-    customer = "John Doe",
-    equipment = "Treadmill",
-    issue = "Motor not running",
-    status = "Scheduled",
-    dateStr = "2025-07-03",
-    timeStr = "14:30",
-    servicePrice = "49.99",
-    totalPrice = "67.49"
-  } = req.body || {};
+  // Add dateObj if missing
+  appointment.dateObj = appointment.date ? new Date(appointment.date) : new Date();
 
-  let output = "";
-
-  if (format === "email") {
-    res.type("html");
-    if (type === "reminder") {
-      output = `
-        <div>
-          Hi ${customer},<br><br>
-          Just a friendly reminder from Canadian Fitness Repair!<br><br>
-          You have an upcoming service appointment:<br><br>
-          📅 Date: ${dateStr} <br>
-          ⏰ Time: ${timeStr} <br>
-          🔧 Equipment: ${equipment} <br>
-          📌 Current Status: ${status}<br><br>
-          If you need to reschedule, please contact us at 289-925-7239 or reply to this email.<br><br>
-          ${EMAIL_FOOTER.replace(/\n/g, "<br>")}
-        </div>
-      `;
-    } else if (type === "confirmation") {
-      output = `
-        <div>
-          Hi ${customer},<br><br>
-          This is a confirmation from Canadian Fitness Repair.<br><br>
-          Your appointment is scheduled for:<br>
-          📅 ${dateStr} at ⏰ ${timeStr}<br><br>
-          Equipment: ${equipment}<br>
-          Issue: ${issue}<br><br>
-          Service Price: $${servicePrice}<br>
-          Total (incl. tax): $${totalPrice}<br>
-          Status: ${status}<br><br>
-          If you need to reschedule, please contact us at 289-925-7239 or reply to this email.<br><br>
-          ${EMAIL_FOOTER.replace(/\n/g, "<br>")}
-        </div>
-      `;
-    } else if (type === "update") {
-      output = `
-        <div>
-          Hi ${customer},<br><br>
-          Here's an update regarding your repair:<br><br>
-          Status: ${status}<br>
-          Equipment: ${equipment}<br><br>
-          If you have any questions, call us at 289-925-7239.<br><br>
-          ${EMAIL_FOOTER.replace(/\n/g, "<br>")}
-        </div>
-      `;
+  try {
+    if (format === "email") {
+      const html = generateEmailBody(appointment, type);
+      res.type("html").send(html);
+    } else if (format === "sms") {
+      const sms = generateSMSBody(appointment, type);
+      res.type("text").send(sms);
     } else {
-      output = "<div>Unsupported preview type or format.</div>";
+      res.status(400).send("Unsupported format");
     }
-  } else {
-    res.type("text");
-    if (type === "reminder") {
-      output = `⏰ Reminder: Appt on ${dateStr} at ${timeStr} for ${equipment}. Status: ${status}. Call 289-925-7239 – Canadian Fitness Repair.`;
-    } else if (type === "confirmation") {
-      output = `Your appt. with Canadian Fitness Repair on ${dateStr} at ${timeStr} is confirmed for ${equipment}. Status: ${status}. Call 289-925-7239.`;
-    } else if (type === "update") {
-      output = `🔧 Repair update: Your ${equipment} status changed to "${status}". Need help? Call 289-925-7239 – Canadian Fitness Repair.`;
-    } else {
-      output = "Unsupported preview type or format.";
-    }
+  } catch (err) {
+    console.error("Preview template error:", err);
+    res.status(500).send("Failed to generate preview");
   }
-
-  res.send(output);
 });
+
 
 // ✅ Start server
 app.listen(port, () => {
